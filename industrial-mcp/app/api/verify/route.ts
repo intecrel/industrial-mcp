@@ -1,16 +1,25 @@
 import { NextResponse } from 'next/server'
-import { headers } from 'next/headers'
+import { AUTH_CONFIG } from '@/lib/config'
 
-export async function POST() {
-  const headersList = headers()
-  const clientIP = headersList.get('x-forwarded-for') || 'unknown'
-  
-  // Add your IP verification logic here
-  const isValidIP = true // Replace with actual IP verification
+export async function POST(request: Request) {
+  try {
+    const { macAddress } = await request.json()
+    
+    if (macAddress === AUTH_CONFIG.MAC_ADDRESS) {
+      return NextResponse.json({ 
+        success: true,
+        token: process.env.ACCESS_TOKEN 
+      })
+    }
 
-  if (isValidIP) {
-    return NextResponse.json({ verified: true })
+    return NextResponse.json({ 
+      success: false,
+      message: 'Invalid credentials'
+    }, { status: 401 })
+  } catch (error) {
+    return NextResponse.json({ 
+      success: false,
+      message: 'Server error'
+    }, { status: 500 })
   }
-
-  return NextResponse.json({ verified: false }, { status: 401 })
 }
