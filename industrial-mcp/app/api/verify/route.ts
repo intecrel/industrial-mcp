@@ -1,25 +1,26 @@
 import { NextResponse } from 'next/server'
-import { AUTH_CONFIG } from '@/lib/config'
+
+const VALID_MAC = '84:94:37:e4:24:88'
 
 export async function POST(request: Request) {
   try {
     const { macAddress } = await request.json()
     
-    if (macAddress === AUTH_CONFIG.MAC_ADDRESS) {
-      return NextResponse.json({ 
+    if (macAddress === VALID_MAC) {
+      return NextResponse.json({
         success: true,
-        token: process.env.ACCESS_TOKEN 
+        message: 'MAC address verified'
       })
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: false,
-      message: 'Invalid credentials'
+      message: 'Invalid MAC address'
     }, { status: 401 })
   } catch (error) {
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: false,
-      message: 'Server error'
-    }, { status: 500 })
+      message: 'Invalid request format'
+    }, { status: 400 })
   }
 }
