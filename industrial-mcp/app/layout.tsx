@@ -1,11 +1,23 @@
 import './globals.css';
+import { getServerSession } from 'next-auth'
+import { redirect } from 'next/navigation'
 
 export const metadata = {
   title: 'Industrial MCP',
   description: 'Master Control Program for connected systems',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const session = await getServerSession()
+  
+  if (!session) {
+    redirect('/login')
+  }
+
   return (
     <html lang="en">
       <body className="bg-gray-100 min-h-screen">
@@ -25,5 +37,5 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </div>
       </body>
     </html>
-  );
+  )
 }
