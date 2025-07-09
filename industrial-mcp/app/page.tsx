@@ -1,6 +1,7 @@
 import driver from '../lib/neo4j'
 import claude from '../lib/claude'
 import UrlManager from './components/UrlManager'
+import MACVerification from './components/MACVerification'
 
 export default function HomePage() {
   return (
@@ -19,6 +20,7 @@ export default function HomePage() {
         </div>
       </div>
       <UrlManager />
+      <MACVerification />
     </div>
   );
 }
