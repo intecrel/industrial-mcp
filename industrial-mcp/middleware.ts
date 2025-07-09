@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { validateMAC } from '@/utils/auth'
 
 export function middleware(request: NextRequest) {
   // Allow API routes
@@ -8,15 +7,16 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Allow public routes
-  if (request.nextUrl.pathname === '/') {
+  // Check verification status
+  const isVerified = request.cookies.get('mcp-verified')?.value === 'true'
+
+  // Allow home page only if not verified
+  if (request.nextUrl.pathname === '/' && !isVerified) {
     return NextResponse.next()
   }
 
-  // Check auth session
-  const isAuthenticated = request.cookies.get('mcp-auth')?.value === 'true'
-
-  if (!isAuthenticated) {
+  // Redirect to home if not verified
+  if (!isVerified) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
