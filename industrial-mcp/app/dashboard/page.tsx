@@ -1,91 +1,75 @@
 'use client'
 
 import { useState } from 'react'
-import Sidebar from '../components/Sidebar'
 
 export default function Dashboard() {
-  const [copied, setCopied] = useState(false)
   const [verifying, setVerifying] = useState(false)
-  const [authorized, setAuthorized] = useState(false)
-  const integrationUrl = 'https://industrial-mcp.vercel.app/api/verify'
-  const VALID_MAC = '84:94:37:e4:24:88'
+  const [authorized, setAuthorized] = useState<boolean | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(integrationUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+  const integrationUrl = `${window.location.origin}/api/verify`
+  const testMac = '84:94:37:e4:24:88'
 
   const handleVerify = async () => {
+    console.log('🔍 Starting verification')
     setVerifying(true)
+    setError(null)
+
     try {
-      const response = await fetch('/api/verify', {
+      const res = await fetch(integrationUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ macAddress: VALID_MAC }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ macAddress: testMac })
       })
-      
-      const data = await response.json()
+      console.log('📡 Fetch response status:', res.status)
+
+      const data = await res.json()
+      console.log('📬 Response body:', data)
+
       setAuthorized(data.success)
-    } catch (error) {
-      console.error('Verification failed:', error)
-      setAuthorized(false)
+      if (!data.success) setError(data.message)
+    } catch (err) {
+      console.error('🚨 Verification fetch error:', err)
+      setError('Network or server error')
     } finally {
       setVerifying(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-900">
-      <Sidebar />
-      
-      <main className="ml-64 flex-1 p-8">
-        <div className="max-w-2xl mx-auto">
-          <h1 className="text-4xl font-bold text-white mb-8">
-            Master Control Panel
-          </h1>
-          
-          <div className="bg-gray-800 rounded-lg shadow-xl p-6 space-y-6">
-            <div className="bg-gray-700 p-6 rounded-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-white">
-                  Integration URL
-                </h2>
-                <button
-                  onClick={handleVerify}
-                  disabled={verifying}
-                  className={`px-4 py-2 rounded-lg transition-colors ${
-                    authorized
-                      ? 'bg-green-500 hover:bg-green-600'
-                      : 'bg-blue-500 hover:bg-blue-600'
-                  } text-white`}
-                >
-                  {verifying ? 'Verifying...' : authorized ? 'Authorized ✓' : 'Verify Connection'}
-                </button>
-              </div>
-              <div className="bg-gray-600 p-4 rounded-lg">
-                <code className="text-green-400 break-all">
-                  {integrationUrl}
-                </code>
-              </div>
-              <button
-                onClick={handleCopy}
-                className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-              >
-                {copied ? '✓ Copied!' : 'Copy URL'}
-              </button>
-            </div>
-            
-            <div className="text-gray-400">
-              <h3 className="font-semibold mb-2">Connection Details:</h3>
-              <p className="mb-2">• MAC Address: {VALID_MAC}</p>
-              <p>• Status: {authorized ? 'Connected' : 'Ready to connect'}</p>
-            </div>
-          </div>
+    <main className="p-6 max-w-xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">MCP Dashboard</h1>
+
+      <div className="mb-4">
+        <label className="block font-semibold">Integration URL:</label>
+        <input type="text"
+               readOnly
+               value={integrationUrl}
+               className="w-full p-2 border rounded"
+        />
+        <button
+          onClick={() => { navigator.clipboard.writeText(integrationUrl); alert('Copied') }}
+          className="mt-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          Copy URL
+        </button>
+      </div>
+
+      <div className="mb-4">
+        <button
+          onClick={handleVerify}
+          disabled={verifying}
+          className={`px-4 py-2 rounded text-white ${verifying ? 'bg-gray-400' : 'bg-green-500 hover:bg-green-600'}`}
+        >
+          {verifying ? 'Verifying...' : 'Verify MAC'}
+        </button>
+      </div>
+
+      {authorized !== null && (
+        <div className={`p-4 rounded ${authorized ? 'bg-green-100' : 'bg-red-100'}`}>
+          {authorized ? '✅ MAC Address Verified!' : `❌ Verification failed: ${error}`}
         </div>
-      </main>
-    </div>
+      )}
+    </main>
   )
 }
