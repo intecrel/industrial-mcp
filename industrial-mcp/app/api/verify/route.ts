@@ -13,28 +13,49 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: Request) {
+  console.log('Received POST request:', request.method)
+  console.log('Request headers:', Object.fromEntries(request.headers))
+
   try {
     const body = await request.json()
     console.log('Request body:', body)
     
     if (body.macAddress === VALID_MAC) {
       console.log('MAC address verified successfully')
-      return NextResponse.json({
+      return new NextResponse(JSON.stringify({
         success: true,
         message: 'MAC address verified'
-      }, { headers: corsHeaders })
+      }), { 
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
+      })
     }
 
     console.log('Invalid MAC address:', body.macAddress)
-    return NextResponse.json({
+    return new NextResponse(JSON.stringify({
       success: false,
       message: 'Invalid MAC address'
-    }, { status: 401, headers: corsHeaders })
+    }), { 
+      status: 401,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
+    })
   } catch (error) {
     console.error('Verification error:', error)
-    return NextResponse.json({
+    return new NextResponse(JSON.stringify({
       success: false,
       message: 'Invalid request format'
-    }, { status: 400, headers: corsHeaders })
+    }), { 
+      status: 400,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
+    })
   }
 }
