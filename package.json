@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:local": "node scripts/test-mcp.js --url=http://localhost:3000 --verbose=true",
+    "test:prod": "node scripts/test-mcp.js --url=$MCP_PROD_URL",
+    "test:build": "npm run build && node scripts/test-mcp.js --url=http://localhost:3000"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",
@@ -22,6 +25,7 @@
     "autoprefixer": "^10.4.14",
     "postcss": "^8.4.21",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "node-fetch": "^2.6.12"
   }
 }
