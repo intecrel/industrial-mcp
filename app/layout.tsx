@@ -1,41 +1,66 @@
 import './globals.css';
-import { cookies } from 'next/headers'
+import { Inter } from 'next/font/google';
+import type { Metadata } from 'next';
 
-export const metadata = {
+// Import Inter font
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+});
+
+// Metadata for the application
+export const metadata: Metadata = {
   title: 'Industrial MCP',
-  description: 'Master Control Program for connected systems',
+  description: 'Industrial Model Context Protocol implementation with Vercel MCP TypeScript SDK',
+  keywords: ['MCP', 'Model Context Protocol', 'Industrial', 'AI', 'TypeScript', 'Vercel'],
+  authors: [{ name: 'Industrial Marketing' }],
+  creator: 'Industrial Marketing',
+  publisher: 'Industrial Marketing',
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+  },
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0f172a' },
+  ],
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  // Simple auth check based on a cookie written after MAC-address verification.
-  // If the cookie isn't present, the sidebar will be hidden but the page still renders.
-  const isVerified =
-    cookies().get('mcp-verified')?.value === 'true'
-
   return (
-    <html lang="en">
-      <body className="bg-gray-100 min-h-screen">
-        <div className="flex h-screen">
-          {isVerified && (
-            <aside className="w-64 bg-white shadow p-4">
-              <h1 className="text-2xl font-bold text-blue-600">MCP</h1>
-              <nav className="mt-4">
-                <ul className="space-y-2">
-                  <li><a href="#" className="block text-gray-700">Dashboard</a></li>
-                  <li><a href="#" className="block text-gray-700">Data</a></li>
-                  <li><a href="#" className="block text-gray-700">Auth</a></li>
-                  <li><a href="#" className="block text-gray-700">Settings</a></li>
-                </ul>
-              </nav>
-            </aside>
-          )}
-          <main className="flex-1 p-8 overflow-y-auto">{children}</main>
-        </div>
+    <html lang="en" className={`${inter.variable}`}>
+      <body className="min-h-screen bg-background antialiased">
+        {/* Dark mode detection - this script runs before page load to prevent flash */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const storedTheme = localStorage.getItem('theme');
+                if (storedTheme === 'dark' || (!storedTheme && isDarkMode)) {
+                  document.documentElement.classList.add('dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                }
+              })();
+            `,
+          }}
+        />
+        <main className="relative flex min-h-screen flex-col">
+          {children}
+        </main>
       </body>
     </html>
-  )
+  );
 }
