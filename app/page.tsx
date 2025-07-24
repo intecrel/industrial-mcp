@@ -33,7 +33,7 @@ export default function HomePage() {
     checkVerification()
   }, [router])
 
-  const validateMacAddress = (mac) => {
+  const validateMacAddress = (mac: string) => {
     // Basic MAC address validation (XX:XX:XX:XX:XX:XX format)
     const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/
     return macRegex.test(mac)
