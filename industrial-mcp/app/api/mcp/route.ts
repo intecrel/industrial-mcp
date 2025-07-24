@@ -16,13 +16,43 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { method, params } = await request.json()
+    const body = await request.json()
+    const { method, params, id, jsonrpc } = body
     
-    console.log('🔧 MCP Request:', { method, params })
+    console.log('🔧 MCP Request:', { method, params, id, jsonrpc })
+    
+    // Helper function to create JSONRPC 2.0 responses
+    const createResponse = (result: any, error: any = null) => {
+      return NextResponse.json({
+        jsonrpc: "2.0",
+        id: id || null,
+        ...(error ? { error } : { result })
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }
+      })
+    }
     
     switch (method) {
+      case 'initialize':
+        return createResponse({
+          protocolVersion: "2025-06-18",
+          capabilities: {
+            tools: {},
+            resources: {}
+          },
+          serverInfo: {
+            name: "Industrial MCP",
+            version: "1.0.0"
+          }
+        })
+        
       case 'tools/list':
-        return NextResponse.json({
+        return createResponse({
           tools: [
             {
               name: 'get_system_status',
@@ -53,7 +83,7 @@ export async function POST(request: NextRequest) {
         
       case 'tools/call':
         if (params.name === 'get_system_status') {
-          return NextResponse.json({
+          return createResponse({
             content: [
               {
                 type: 'text',
@@ -70,7 +100,7 @@ export async function POST(request: NextRequest) {
         
         if (params.name === 'get_operational_data') {
           const { dataType = 'all' } = params.arguments || {}
-          return NextResponse.json({
+          return createResponse({
             content: [
               {
                 type: 'text',
@@ -83,14 +113,43 @@ export async function POST(request: NextRequest) {
             ]
           })
         }
-        break
+        
+        return createResponse(null, {
+          code: -32601,
+          message: `Unknown tool: ${params.name}`
+        })
         
       default:
-        return NextResponse.json({ error: 'Method not supported' }, { status: 400 })
+        return createResponse(null, {
+          code: -32601,
+          message: `Method not found: ${method}`
+        })
     }
     
   } catch (error) {
     console.error('🚨 MCP Error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({
+      jsonrpc: "2.0",
+      id: null,
+      error: {
+        code: -32603,
+        message: "Internal error"
+      }
+    }, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    }
+  })
 }
