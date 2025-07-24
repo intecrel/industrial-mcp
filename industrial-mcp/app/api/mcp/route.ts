@@ -1,6 +1,20 @@
 // Create: app/api/mcp/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 
+export async function GET() {
+  return NextResponse.json({
+    message: "Industrial MCP Server",
+    status: "online",
+    description: "This is an MCP (Model Context Protocol) server for Claude integration",
+    endpoints: {
+      "POST /api/mcp": "MCP protocol endpoint for tool calls",
+      "tools": ["get_system_status", "get_operational_data"]
+    },
+    usage: "Use this URL in Claude's custom MCP connector",
+    timestamp: new Date().toISOString()
+  })
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { method, params } = await request.json()
