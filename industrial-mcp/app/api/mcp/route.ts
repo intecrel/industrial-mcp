@@ -15,6 +15,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('🚨 MCP POST ROUTE HIT!') // ADD THIS LINE HERE
   try {
     const body = await request.json()
     const { method, params, id, jsonrpc } = body
@@ -23,16 +24,17 @@ export async function POST(request: NextRequest) {
     
     // Helper function to create JSONRPC 2.0 responses
     const createResponse = (result: any, error: any = null) => {
-      return NextResponse.json({
+      return new NextResponse(JSON.stringify({
         jsonrpc: "2.0",
         id: id || null,
         ...(error ? { error } : { result })
-      }, {
+      }), {
+        status: 200,
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept'
         }
       })
     }
@@ -128,14 +130,15 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error('🚨 MCP Error:', error)
-    return NextResponse.json({
+    return new NextResponse(JSON.stringify({
       jsonrpc: "2.0",
       id: null,
       error: {
         code: -32603,
         message: "Internal error"
       }
-    }, {
+    }), {
+      status: 200,
       headers: {
         'Content-Type': 'application/json'
       }
@@ -149,7 +152,7 @@ export async function OPTIONS() {
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept'
     }
   })
 }

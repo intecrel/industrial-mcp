@@ -1,17 +1,24 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function Dashboard() {
   const [verifying, setVerifying] = useState(false)
   const [authorized, setAuthorized] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [responseDebug, setResponseDebug] = useState<string>('')
+  const [integrationUrl, setIntegrationUrl] = useState<string>('')
 
-  const integrationUrl = `${window.location.origin}/api/verify`
   const testMac = '84:94:37:e4:24:88'
 
+  // Set the URL after component mounts (client-side only)
+  useEffect(() => {
+    setIntegrationUrl(`${window.location.origin}/api/verify`)
+  }, [])
+
   const handleVerify = async () => {
+    if (!integrationUrl) return // Don't run if URL isn't set yet
+    
     console.log('🔍 Starting verification')
     setVerifying(true)
     setError(null)

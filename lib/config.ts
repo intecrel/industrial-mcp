@@ -58,3 +58,9 @@ export const AUTH_CONFIG: AuthConfig = {
   // Optional token used to connect to external services (e.g., Claude)
   ACCESS_TOKEN: process.env.ACCESS_TOKEN
 }
+
+// Simple config export for compatibility
+export const config = {
+  apiUrl: AUTH_CONFIG.BASE_URL
+}
+

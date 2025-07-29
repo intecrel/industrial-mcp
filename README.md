@@ -1,158 +1,293 @@
-# Industrial MCP
+# 🏭 Industrial MCP Server
 
-Industrial MCP (Master Control Program) is a **Next.js 14** application that provides a secure, hardware-verified gateway to your organisational Knowledge Graph (Neo4j Aura or self-hosted) through a simple REST interface called the **Model Context Protocol (MCP)**.
+A comprehensive **Model Context Protocol (MCP)** server designed for industrial system monitoring and control. Built with Next.js, TypeScript, and the Vercel MCP adapter, this server provides Claude AI with powerful tools to interact with industrial systems.
 
-Key features  
-* MAC-address-based verification flow (no user accounts required)  
-* Cookie-based session & middleware-protected routes  
-* MCP endpoint for querying Neo4j (`/api/mcp`) with API-key auth  
-* Tailwind-CSS UI with landing page & dashboard  
-* Ready-to-deploy on Vercel – zero-config build
+## 🚀 Live Demo
 
----
+- **Production Server**: https://industrial-fvucjqopi-samuels-projects-2dd2e35e.vercel.app
+- **MCP Endpoint**: https://industrial-fvucjqopi-samuels-projects-2dd2e35e.vercel.app/api/mcp
 
-## 1 · Quick Start
+## ✨ Features
 
+### Available MCP Tools
+
+- **🔄 Echo Tool** - Basic communication testing
+- **📊 System Status** - Real-time industrial system health monitoring
+- **📈 Operational Data** - Performance metrics and analytics
+- **🔧 Equipment Monitor** - Individual equipment status and maintenance tracking
+
+### Industrial Metrics Provided
+
+- System uptime and health status
+- CPU, memory, disk, and network monitoring
+- Throughput and performance analytics
+- Equipment temperature, vibration, and pressure readings
+- Maintenance scheduling and alerts
+- Historical trend analysis
+
+## 🛠️ Quick Start
+
+### Prerequisites
+
+- **Node.js** 18+ 
+- **npm** or **yarn**
+- **Git**
+
+### Installation
+
+1. **Clone the repository:**
 ```bash
-# 1. Clone
-git clone https://github.com/seoptiks123/industrial-mcp.git
+git clone https://github.com/samdurso/industrial-mcp.git
 cd industrial-mcp
+```
 
-# 2. Install dependencies
-npm install        # or yarn / pnpm
+2. **Install dependencies:**
+```bash
+npm install
+```
 
-# 3. Configure environment
-cp .env.local .env.local            # edit values (see section 6)
-
-# 4. Run locally
+3. **Start development server:**
+```bash
 npm run dev
-# visit http://localhost:3000
 ```
 
----
-
-## 2 · Project Structure (partial)
-
-```
-app/                  ── Next.js (app-router) pages & API routes
-├─ page.tsx           ── Landing page with MAC verification form
-├─ dashboard/…        ── Auth-protected dashboard
-├─ api/
-│   ├─ verify/…       ── Verify MAC + status endpoints
-│   ├─ logout/…       ── Logout (clears cookies)
-│   └─ mcp/…          ── MCP protocol interface (GET/POST)
-lib/                  ── Config & helpers
-middleware.ts         ── Route protection
-vercel.json           ── CORS + env mapping for Vercel
-scripts/test-mcp.js   ── End-to-end test script
-```
-
----
-
-## 3 · Deploying to Vercel
-
-1. **Create project** – in Vercel dashboard click **New Project** and select your repo.  
-2. **Environment variables** – add the variables from table (§ 6).  
-3. **Deploy** – press *Deploy*; Vercel will build with `@vercel/next`.  
-4. **Custom domain (optional)** – Settings → Domains → Add.
-
-`vercel.json` already exposes CORS headers and maps env-vars for runtime.
-
----
-
-## 4 · API Usage Examples
-
-### 4.1 Verification Flow
-
+4. **Verify the server is running:**
 ```bash
-# Check status (no cookies yet) -----------------------------
-curl https://<VERCEL_URL>/api/verify/status
-# → {"verified":false}
+# Test basic endpoint
+curl http://localhost:3000/api/mcp
 
-# Verify device ---------------------------------------------
-curl -c cookie.txt -X POST https://<VERCEL_URL>/api/verify \
-  -H 'Content-Type: application/json' \
-  -d '{"macAddress":"84:94:37:e4:24:88"}'
-
-# Check status again ----------------------------------------
-curl -b cookie.txt https://<VERCEL_URL>/api/verify/status
-# → {"verified":true}
-```
-
-### 4.2 MCP Queries
-
-```bash
-# Get MCP service info --------------------------------------
-curl https://<VERCEL_URL>/api/mcp \
-  -H "x-api-key: $API_KEY"
-
-# Run a Cypher query ----------------------------------------
-curl -X POST https://<VERCEL_URL>/api/mcp \
+# Test MCP protocol initialization
+curl -X POST http://localhost:3000/api/mcp \
   -H "Content-Type: application/json" \
-  -H "x-api-key: $API_KEY" \
-  -d '{"query":"MATCH (n) RETURN count(n) AS total"}'
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {"roots": {"listChanged": false}},
+      "clientInfo": {"name": "test-client", "version": "1.0.0"}
+    }
+  }'
 ```
 
-Payloads follow the envelope:
+## 🧪 Testing with MCP Inspector
+
+The MCP Inspector provides a web interface for testing your MCP server:
+
+```bash
+# Install MCP Inspector globally
+npm install -g @modelcontextprotocol/inspector
+
+# Run inspector against local server
+mcp-inspector http://localhost:3000/api/mcp
+
+# Or run against production server
+mcp-inspector https://industrial-fvucjqopi-samuels-projects-2dd2e35e.vercel.app/api/mcp
+```
+
+## 🤖 Claude Desktop Integration
+
+To connect this MCP server to Claude Desktop:
+
+### 1. Edit Claude Desktop Configuration
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+### 2. Add Server Configuration
 
 ```json
 {
-  "mcp": { "version": "1.0.0", "timestamp": "...", "status": "success" },
-  "data": { "results": [...], "count": 42 }
+  "mcpServers": {
+    "industrial-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-fetch",
+        "http://localhost:3000/api/mcp"
+      ]
+    }
+  }
 }
 ```
 
----
+### 3. Restart Claude Desktop
 
-## 5 · Testing
+After saving the configuration, restart Claude Desktop to load the new MCP server.
 
-The repo includes a full test harness.
+### 4. Test in Claude
+
+You can now use commands like:
+- "Get the industrial system status"
+- "Show me operational data for the last 24 hours"
+- "Monitor equipment ID-12345 with history"
+- "Echo test message"
+
+## 🌐 Deployment
+
+### Deploy to Vercel
 
 ```bash
-# Local dev server must be running on port 3000
-npm run test:local                # verbose local tests
+# Install Vercel CLI
+npm install -g vercel
 
-# Against production deployment
-MCP_PROD_URL=https://industrial-mcp.vercel.app npm run test:prod
+# Deploy to Vercel
+vercel
+
+# Deploy to production
+vercel --prod
 ```
 
-The script runs:
-* status → verify → status-after-auth
-* MCP info + sample Cypher queries
-* logout → final status
+## 📁 Project Structure
+
+```
+industrial-mcp/
+├── app/
+│   ├── api/
+│   │   └── [transport]/
+│   │       └── route.ts          # Main MCP server implementation
+│   ├── dashboard/
+│   │   └── page.tsx              # Web dashboard
+│   ├── globals.css               # Global styles
+│   ├── layout.tsx                # Root layout
+│   └── page.tsx                  # Home page
+├── package.json                  # Dependencies and scripts
+├── tsconfig.json                 # TypeScript configuration
+├── tailwind.config.js            # Tailwind CSS configuration
+├── next.config.js                # Next.js configuration
+└── README.md                     # This file
+```
+
+## 🔧 API Reference
+
+### MCP Protocol Endpoints
+
+All MCP communication happens via JSON-RPC 2.0 over HTTP:
+
+**Base URL**: `/api/mcp`
+
+#### Initialize Connection
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {"roots": {"listChanged": false}},
+    "clientInfo": {"name": "client", "version": "1.0.0"}
+  }
+}
+```
+
+#### List Available Tools
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/list",
+  "params": {}
+}
+```
+
+#### Call a Tool
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "get_system_status",
+    "arguments": {}
+  }
+}
+```
+
+### Tool Specifications
+
+#### Echo Tool
+- **Name**: `echo`
+- **Parameters**: `message` (string, required)
+- **Returns**: Echoed message
+
+#### System Status Tool
+- **Name**: `get_system_status`
+- **Parameters**: None
+- **Returns**: System health metrics, uptime, alerts
+
+#### Operational Data Tool
+- **Name**: `get_operational_data`
+- **Parameters**: 
+  - `timeRange` (string, optional): "1h", "24h", "7d"
+  - `system` (string, optional): Specific system to query
+- **Returns**: Performance metrics and trends
+
+#### Equipment Monitor Tool
+- **Name**: `monitor_equipment`
+- **Parameters**:
+  - `equipmentId` (string, required): Equipment identifier
+  - `includeHistory` (boolean, optional): Include historical data
+- **Returns**: Equipment status, metrics, maintenance info
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **"Cannot find module '@vercel/mcp-adapter'"**
+   ```bash
+   npm install @vercel/mcp-adapter
+   ```
+
+2. **"Method not allowed" errors**
+   - Ensure you're using POST requests for MCP protocol
+   - Include proper headers: `Content-Type: application/json` and `Accept: application/json, text/event-stream`
+
+3. **Connection refused in Claude Desktop**
+   - Verify the server is running on the correct port
+   - Check Claude Desktop configuration file syntax
+   - Restart Claude Desktop after configuration changes
+
+4. **Build errors on deployment**
+   ```bash
+   npm run build  # Test build locally first
+   npm run lint   # Fix any linting issues
+   ```
+
+### Debug Mode
+
+Enable verbose logging by setting the environment variable:
+```bash
+DEBUG=mcp:* npm run dev
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit changes: `git commit -m 'Add amazing feature'`
+4. Push to branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Model Context Protocol](https://modelcontextprotocol.io/) - The protocol specification
+- [Vercel MCP Adapter](https://github.com/vercel/mcp-adapter) - MCP implementation for Vercel
+- [Claude AI](https://claude.ai/) - AI assistant integration
+- [Next.js](https://nextjs.org/) - React framework
+- [Anthropic](https://anthropic.com/) - MCP protocol development
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/samdurso/industrial-mcp/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/samdurso/industrial-mcp/discussions)
+- **Email**: sam@industrial.marketing
 
 ---
 
-## 6 · Environment Variables
-
-| Variable        | Required | Description / Example                               |
-|-----------------|----------|-----------------------------------------------------|
-| `MAC_ADDRESS`   | ✔        | Authorised device MAC (e.g. `84:94:37:e4:24:88`)    |
-| `API_KEY`       | ✔        | Long random string for `/api/mcp` auth             |
-| `ALLOWED_IPS`   | ✖        | `127.0.0.1,::1` IPs that bypass MAC verification    |
-| `ACCESS_TOKEN`  | ✖        | Claude / Anthropic API key (if used)               |
-| `NEO4J_URI`     | ✖        | `neo4j+s://xxxxx.databases.neo4j.io`               |
-| `NEO4J_USERNAME`| ✖        | `neo4j`                                            |
-| `NEO4J_PASSWORD`| ✖        | your-password                                      |
-
-On Vercel, define them in **Project → Settings → Environment Variables**.
-
----
-
-## 7 · Troubleshooting
-
-| Symptom                                       | Cause / Fix |
-|-----------------------------------------------|-------------|
-| **Build fails on Vercel**                     | Ensure Node 18+ (`engines` not pinning old Node) |
-| **401 Unauthorized from `/api/mcp`**          | Missing/incorrect `API_KEY` header (`x-api-key` or `Authorization: Bearer`) |
-| **Invalid MAC in production**                 | Wrong `MAC_ADDRESS` env value (case & separators matter) |
-| **502 Neo4j errors**                          | Wrong `NEO4J_URI` or firewall not allowing Vercel IPs |
-| **CORS browser errors**                       | Adjust origins in `vercel.json` → `routes.headers`  |
-| **Still verified after logout**               | Clear browser cookies; ensure same domain/path       |
-
-Need extra help?  
-*Open an issue* on GitHub or tag **@seoptiks123**.
-
----
-
-&copy; 2025 Industrial MCP – MIT License
+**Made with ❤️ for Industrial Automation and AI Integration**

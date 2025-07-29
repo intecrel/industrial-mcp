@@ -1,37 +1,20 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function HomePage() {
-  const [macAddress, setMacAddress] = useState('')
-  const [verifying, setVerifying] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
-  const router = useRouter()
+  const [status, setStatus] = useState<'verified' | 'not-verified' | 'loading'>('loading')
 
-  // Check if already verified and redirect to dashboard
   useEffect(() => {
-    const checkVerification = async () => {
-      try {
-        // Use the API to check verification status via cookies
-        const response = await fetch('/api/verify/status', {
-          method: 'GET',
-          credentials: 'include', // Important for cookies
-        })
-        
-        const data = await response.json()
-        
-        if (data.verified) {
-          router.push('/dashboard')
-        }
-      } catch (error) {
-        console.error('Verification check failed:', error)
-      }
-    }
-    
-    checkVerification()
-  }, [router])
+    // Check verification status on load
+    fetch('/api/verify/status')
+      .then(res => res.json())
+      .then(data => {
+        setStatus(data.verified ? 'verified' : 'not-verified')
+      })
+      .catch(() => setStatus('not-verified'))
+  }, [])
 
   const validateMacAddress = (mac: string) => {
     // Basic MAC address validation (XX:XX:XX:XX:XX:XX format)
@@ -39,100 +22,85 @@ export default function HomePage() {
     return macRegex.test(mac)
   }
 
-  const handleVerify = async () => {
-    // Reset states
-    setError('')
-    setSuccess(false)
-    
-    // Validate MAC address format
-    if (!validateMacAddress(macAddress)) {
-      setError('Please enter a valid MAC address (format: XX:XX:XX:XX:XX:XX)')
-      return
-    }
-    
-    setVerifying(true)
-    
-    try {
-      const response = await fetch('/api/verify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ macAddress }),
-        credentials: 'include', // Important for cookies
-      })
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        setSuccess(true)
-        // Short delay before redirect for better UX
-        setTimeout(() => {
-          router.push('/dashboard')
-        }, 1000)
-      } else {
-        setError(data.message || 'Verification failed')
-      }
-    } catch (error) {
-      setError('Connection error. Please try again.')
-      console.error('Verification error:', error)
-    } finally {
-      setVerifying(false)
-    }
-  }
-
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-900">
-      <div className="p-8 bg-gray-800 rounded-lg shadow-xl text-center w-96">
-        <h1 className="text-3xl font-bold mb-6 text-white">Industrial MCP</h1>
-        <p className="text-gray-300 mb-6">Enter your device MAC address to connect to the Master Control Program</p>
-        
-        <div className="mb-6">
-          <input
-            type="text"
-            value={macAddress}
-            onChange={(e) => setMacAddress(e.target.value)}
-            placeholder="XX:XX:XX:XX:XX:XX"
-            className="w-full p-3 mb-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            disabled={verifying || success}
-          />
-          {error && (
-            <p className="text-red-400 text-sm text-left mt-1">{error}</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="max-w-4xl mx-auto px-6 py-12">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            Industrial MCP
+          </h1>
+          <p className="text-xl text-gray-600 mb-8">
+            Master Control Program for Industrial Device Verification
+          </p>
+          
+          {/* Status Badge */}
+          <div className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium ${
+            status === 'verified' 
+              ? 'bg-green-100 text-green-800' 
+              : status === 'not-verified'
+              ? 'bg-red-100 text-red-800'
+              : 'bg-yellow-100 text-yellow-800'
+          }`}>
+            {status === 'verified' && '✅ Device Verified'}
+            {status === 'not-verified' && '❌ Not Verified'}
+            {status === 'loading' && '🔄 Checking...'}
+          </div>
+        </div>
+
+        {/* Features Grid */}
+        <div className="grid md:grid-cols-3 gap-8 mb-12">
+          <div className="bg-white rounded-lg p-6 shadow-sm">
+            <div className="text-blue-600 text-2xl mb-3">🔧</div>
+            <h3 className="text-lg font-semibold mb-2">MAC Verification</h3>
+            <p className="text-gray-600">Verify industrial device MAC addresses for network access</p>
+          </div>
+          
+          <div className="bg-white rounded-lg p-6 shadow-sm">
+            <div className="text-green-600 text-2xl mb-3">🤖</div>
+            <h3 className="text-lg font-semibold mb-2">Claude Integration</h3>
+            <p className="text-gray-600">MCP server compatible with Claude for AI-powered device management</p>
+          </div>
+          
+          <div className="bg-white rounded-lg p-6 shadow-sm">
+            <div className="text-purple-600 text-2xl mb-3">📊</div>
+            <h3 className="text-lg font-semibold mb-3">Real-time Status</h3>
+            <p className="text-gray-600">Monitor connection status and authorized devices</p>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="text-center space-x-4">
+          <Link 
+            href="/dashboard"
+            className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Access Dashboard
+          </Link>
+          
+          {status === 'not-verified' && (
+            <button 
+              onClick={() => window.location.href = '/dashboard'}
+              className="inline-flex items-center px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Verify Device
+            </button>
           )}
         </div>
-        
-        <button
-          onClick={handleVerify}
-          disabled={verifying || success || !macAddress}
-          className={`w-full font-bold py-3 px-6 rounded transition-colors ${
-            success 
-              ? 'bg-green-500 text-white' 
-              : 'bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50'
-          }`}
-        >
-          {verifying ? (
-            <span className="flex items-center justify-center">
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Verifying...
-            </span>
-          ) : success ? (
-            <span className="flex items-center justify-center">
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-              </svg>
-              Connected! Redirecting...
-            </span>
-          ) : (
-            'Connect to MCP'
-          )}
-        </button>
-        
-        <div className="mt-6 text-gray-400 text-xs">
-          <p>Industrial MCP v1.0.0</p>
-          <p className="mt-1">Secure hardware-verified connection</p>
+
+        {/* MCP Integration Info */}
+        <div className="mt-16 bg-white rounded-lg p-8 shadow-sm">
+          <h2 className="text-2xl font-bold mb-4">Claude MCP Integration</h2>
+          <p className="text-gray-600 mb-4">
+            This server provides MCP (Model Context Protocol) tools for Claude to verify industrial devices.
+          </p>
+          
+          <div className="bg-gray-50 rounded p-4">
+            <p className="text-sm font-medium text-gray-700 mb-2">API Endpoint:</p>
+            <code className="text-sm bg-gray-100 px-2 py-1 rounded">
+              https://industrial-mcp.vercel.app/api/mcp
+            </code>
+          </div>
         </div>
       </div>
     </div>
