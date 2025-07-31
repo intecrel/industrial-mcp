@@ -11,6 +11,11 @@ type AuthConfig = {
   API_KEY: string
   CLAUDE_ENDPOINT: string
   ACCESS_TOKEN?: string
+  RATE_LIMIT: {
+    requests: number
+    windowMs: number
+  }
+  ENVIRONMENT: 'development' | 'production' | 'test'
 }
 
 /**
@@ -47,7 +52,7 @@ export const AUTH_CONFIG: AuthConfig = {
   // Vercel automatically injects `VERCEL_URL` for deployed envs.
   BASE_URL: process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000',
+    : 'http://localhost:3001',
 
   // API key is mandatory in production, optional in dev.
   API_KEY: getEnv('API_KEY', 'development-key', true),
@@ -56,7 +61,16 @@ export const AUTH_CONFIG: AuthConfig = {
   CLAUDE_ENDPOINT: '/api/claude/connect',
 
   // Optional token used to connect to external services (e.g., Claude)
-  ACCESS_TOKEN: process.env.ACCESS_TOKEN
+  ACCESS_TOKEN: process.env.ACCESS_TOKEN,
+
+  // Rate limiting configuration
+  RATE_LIMIT: {
+    requests: parseInt(process.env.RATE_LIMIT_REQUESTS ?? '100', 10),
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '900000', 10) // 15 minutes
+  },
+
+  // Environment detection
+  ENVIRONMENT: (process.env.NODE_ENV as AuthConfig['ENVIRONMENT']) ?? 'development'
 }
 
 // Simple config export for compatibility
