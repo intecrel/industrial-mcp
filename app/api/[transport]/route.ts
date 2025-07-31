@@ -286,6 +286,107 @@ const handler = createMcpHandler(
         }
       }
     );
+    
+    // Register Cloud SQL status tool
+    server.tool(
+      "get_cloud_sql_status",
+      "Get Cloud SQL database connection status and health information",
+      {
+        database: z.string().optional().describe("Specific database name to check (optional)"),
+        include_details: z.boolean().optional().describe("Include detailed connection information")
+      },
+      async ({ database, include_details = false }) => {
+        try {
+          // Import dynamically to avoid build issues
+          const { getCloudSQLStatus } = await import('../mcp/tools/cloud-sql-status')
+          
+          const cacheKey = getCacheKey('cloud_sql_status', { database, include_details });
+          const cached = getFromCache(cacheKey);
+          if (cached) return cached;
+          
+          const statusData = await getCloudSQLStatus({ database, include_details })
+          
+          const response = {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(statusData, null, 2)
+              }
+            ],
+          };
+
+          // Cache for 30 seconds (database status doesn't change frequently)
+          setCache(cacheKey, response, 30000);
+          
+          console.log(`📊 Cloud SQL status requested for ${database || 'all databases'}`)
+          return response;
+        } catch (error) {
+          console.error('❌ Error getting Cloud SQL status:', error)
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: "Failed to retrieve Cloud SQL status",
+                  message: error instanceof Error ? error.message : "Unable to connect to Cloud SQL",
+                  timestamp: new Date().toISOString(),
+                  code: "CLOUD_SQL_STATUS_ERROR"
+                }, null, 2)
+              }
+            ],
+          }
+        }
+      }
+    );
+    
+    // Register Cloud SQL system info tool
+    server.tool(
+      "get_cloud_sql_info",
+      "Get Cloud SQL system configuration and connection information",
+      {},
+      async () => {
+        try {
+          // Import dynamically to avoid build issues
+          const { getCloudSQLSystemInfo } = await import('../mcp/tools/cloud-sql-status')
+          
+          const cacheKey = getCacheKey('cloud_sql_info', {});
+          const cached = getFromCache(cacheKey);
+          if (cached) return cached;
+          
+          const systemInfo = await getCloudSQLSystemInfo()
+          
+          const response = {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(systemInfo, null, 2)
+              }
+            ],
+          };
+
+          // Cache for 60 seconds (system info changes infrequently)
+          setCache(cacheKey, response, 60000);
+          
+          console.log('🔍 Cloud SQL system info requested')
+          return response;
+        } catch (error) {
+          console.error('❌ Error getting Cloud SQL system info:', error)
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: "Failed to retrieve Cloud SQL system info",
+                  message: error instanceof Error ? error.message : "Unable to access system information",
+                  timestamp: new Date().toISOString(),
+                  code: "CLOUD_SQL_INFO_ERROR"
+                }, null, 2)
+              }
+            ],
+          }
+        }
+      }
+    );
   },
   // Capabilities configuration
   {
@@ -302,6 +403,12 @@ const handler = createMcpHandler(
         },
         monitor_equipment: {
           description: "Monitor specific equipment",
+        },
+        get_cloud_sql_status: {
+          description: "Get Cloud SQL database status and health",
+        },
+        get_cloud_sql_info: {
+          description: "Get Cloud SQL system configuration",
         },
       },
     },

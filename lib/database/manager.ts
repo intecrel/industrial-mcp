@@ -290,7 +290,7 @@ export class DatabaseManager {
       connections.industrial_staging = {
         type: 'mysql',
         ...cloudSQLConfig,
-        database: process.env.CLOUD_SQL_DB_STAGING || 'industrial_mcp_staging',
+        database: process.env.CLOUD_SQL_DB_STAGING || 'seoptinalytics-staging',
         maxConnections: 3 // Lower connection limit for staging
       }
     }
