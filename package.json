@@ -8,7 +8,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test:local": "node scripts/test-mcp.js --url=http://localhost:3000 --api-key=dev-key --mac=84:94:37:e4:24:88 --verbose=true",
+    "test:prod": "node scripts/test-mcp.js --url=${MCP_PROD_URL:-https://industrial-mcp-delta.vercel.app} --api-key=${API_KEY} --mac=${MAC_ADDRESS} --verbose=false",
+    "test:build": "npm run build && npm run start & sleep 10 && npm run test:local; kill %1"
   },
   "keywords": [
     "mcp",
