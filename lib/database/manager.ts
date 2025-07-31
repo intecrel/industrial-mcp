@@ -229,7 +229,7 @@ export class DatabaseManager {
       timeout: parseInt(process.env.NEO4J_TIMEOUT || '60000', 10)
     }
 
-    // MySQL connection (if configured)
+    // Local MySQL connection (if configured)
     if (process.env.MYSQL_HOST || process.env.DATABASE_URL?.includes('mysql')) {
       connections.mysql = {
         type: 'mysql',
@@ -244,9 +244,60 @@ export class DatabaseManager {
       }
     }
 
-    // Cloud SQL (Google Cloud)
-    if (process.env.CLOUD_SQL_CONNECTION_NAME) {
-      connections.cloudsql = {
+    // Cloud SQL configurations (Google Cloud Enterprise HA setup)
+    if (process.env.CLOUD_SQL_HOST && process.env.CLOUD_SQL_PASSWORD) {
+      const cloudSQLConfig = {
+        host: process.env.CLOUD_SQL_HOST,
+        port: parseInt(process.env.CLOUD_SQL_PORT || '3306', 10),
+        username: process.env.CLOUD_SQL_USERNAME || 'industrial_mcp',
+        password: process.env.CLOUD_SQL_PASSWORD,
+        maxConnections: parseInt(process.env.CLOUD_SQL_MAX_CONNECTIONS || '5', 10),
+        timeout: parseInt(process.env.CLOUD_SQL_TIMEOUT || '30000', 10),
+        ssl: {
+          ca: process.env.CLOUD_SQL_CA_CERT || './certs/server-ca.pem',
+          cert: process.env.CLOUD_SQL_CLIENT_CERT || './certs/client-cert.pem',
+          key: process.env.CLOUD_SQL_CLIENT_KEY || './certs/client-key.pem',
+          rejectUnauthorized: true
+        }
+      }
+
+      // Production databases
+      connections.industrial_prod = {
+        type: 'mysql',
+        ...cloudSQLConfig,
+        database: process.env.CLOUD_SQL_DB_INDUSTRIAL || 'industrial_mcp_prod'
+      }
+
+      connections.operational_prod = {
+        type: 'mysql',
+        ...cloudSQLConfig,
+        database: process.env.CLOUD_SQL_DB_OPERATIONAL || 'operational_data_prod'
+      }
+
+      connections.maintenance_prod = {
+        type: 'mysql',
+        ...cloudSQLConfig,
+        database: process.env.CLOUD_SQL_DB_MAINTENANCE || 'maintenance_records_prod'
+      }
+
+      connections.analytics_prod = {
+        type: 'mysql',
+        ...cloudSQLConfig,
+        database: process.env.CLOUD_SQL_DB_ANALYTICS || 'analytics_data_prod'
+      }
+
+      // Staging database
+      connections.industrial_staging = {
+        type: 'mysql',
+        ...cloudSQLConfig,
+        database: process.env.CLOUD_SQL_DB_STAGING || 'industrial_mcp_staging',
+        maxConnections: 3 // Lower connection limit for staging
+      }
+    }
+
+    // Legacy Cloud SQL connection name support (Unix socket)
+    if (process.env.CLOUD_SQL_CONNECTION_NAME && !process.env.CLOUD_SQL_HOST) {
+      connections.cloudsql_legacy = {
         type: 'mysql',
         host: `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`,
         database: process.env.CLOUD_SQL_DATABASE || 'industrial_mcp',
@@ -257,7 +308,15 @@ export class DatabaseManager {
       }
     }
 
-    const defaultConnection = process.env.DEFAULT_DATABASE || 'neo4j'
+    // Determine default connection based on environment
+    let defaultConnection = process.env.DEFAULT_DATABASE || 'neo4j'
+    
+    // Auto-select primary production database if available
+    if (connections.industrial_prod && process.env.NODE_ENV === 'production') {
+      defaultConnection = 'industrial_prod'
+    } else if (connections.industrial_staging && process.env.NODE_ENV !== 'production') {
+      defaultConnection = 'industrial_staging'
+    }
 
     return new DatabaseManager({
       connections,

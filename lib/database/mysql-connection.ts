@@ -1,45 +1,40 @@
 /**
- * MySQL database connection implementation
+ * MySQL database connection implementation with Cloud SQL support
  */
 
+import mysql from 'mysql2/promise'
 import { BaseDatabaseConnection } from './base'
 import { DatabaseConfig, QueryResult, TableSchema } from './types'
+import fs from 'fs'
+import path from 'path'
 
-// Note: mysql2 will be added as dependency in IMCP-41
-// For now, this provides the interface structure
+interface MySQLConfig extends DatabaseConfig {
+  multipleStatements?: boolean
+  charset?: string
+  acquireTimeout?: number
+  reconnect?: boolean
+}
 
 export class MySQLConnection extends BaseDatabaseConnection {
-  private connection: any = null
-  private pool: any = null
+  private connection: mysql.Connection | null = null
+  private pool: mysql.Pool | null = null
+  private mysqlConfig: MySQLConfig
 
-  constructor(config: DatabaseConfig) {
+  constructor(config: MySQLConfig) {
     super({ ...config, type: 'mysql' })
+    this.mysqlConfig = config
   }
 
   async connect(): Promise<void> {
     try {
-      // This will be implemented when mysql2 dependency is added
-      // const mysql = require('mysql2/promise')
+      const connectionConfig = this.buildConnectionConfig()
       
-      const connectionConfig = {
-        host: this.config.host || 'localhost',
-        port: this.config.port || 3306,
-        user: this.config.username,
-        password: this.config.password,
-        database: this.config.database,
-        ssl: this.config.ssl,
-        connectionLimit: this.config.maxConnections || 10,
-        acquireTimeout: this.config.timeout || 60000,
-        timezone: 'Z', // Use UTC
-        dateStrings: false,
-        multipleStatements: false
-      }
-
-      // this.pool = mysql.createPool(connectionConfig)
-      // this.connection = await this.pool.getConnection()
+      // Create connection pool for better performance
+      this.pool = mysql.createPool(connectionConfig)
       
       // Test connection
-      // await this.connection.ping()
+      this.connection = await this.pool.getConnection()
+      await this.connection.ping()
       
       this._isConnected = true
       console.log(`✅ MySQL connected to ${this.config.host}:${this.config.port}/${this.config.database}`)
@@ -49,10 +44,74 @@ export class MySQLConnection extends BaseDatabaseConnection {
     }
   }
 
+  private buildConnectionConfig(): any {
+    const config: any = {
+      host: this.config.host || 'localhost',
+      port: this.config.port || 3306,
+      user: this.config.username,
+      password: this.config.password,
+      database: this.config.database,
+      connectionLimit: this.config.maxConnections || 10,
+      acquireTimeout: this.config.timeout || 60000,
+      timeout: this.config.timeout || 60000,
+      timezone: 'Z', // Use UTC
+      dateStrings: false,
+      multipleStatements: this.mysqlConfig.multipleStatements || false,
+      charset: this.mysqlConfig.charset || 'utf8mb4',
+      
+      // Connection health monitoring
+      idleTimeout: 300000, // 5 minutes
+      
+      // Cloud SQL optimizations
+      keepAliveInitialDelay: 0,
+      enableKeepAlive: true
+    }
+
+    // Configure SSL for Cloud SQL
+    if (this.config.ssl) {
+      if (typeof this.config.ssl === 'boolean') {
+        config.ssl = this.config.ssl
+      } else {
+        const sslConfig = this.config.ssl
+        config.ssl = {
+          rejectUnauthorized: sslConfig.rejectUnauthorized !== false, // Default to true for security
+        }
+
+        // Load SSL certificates if provided
+        if (sslConfig.ca) {
+          config.ssl.ca = this.loadCertificate(sslConfig.ca)
+        }
+        if (sslConfig.cert) {
+          config.ssl.cert = this.loadCertificate(sslConfig.cert)
+        }
+        if (sslConfig.key) {
+          config.ssl.key = this.loadCertificate(sslConfig.key)
+        }
+      }
+    }
+
+    return config
+  }
+
+  private loadCertificate(certPath: string): string | Buffer {
+    try {
+      // If it's a file path, read the file
+      if (certPath.includes('/') || certPath.includes('\\') || certPath.endsWith('.pem')) {
+        const fullPath = path.isAbsolute(certPath) ? certPath : path.join(process.cwd(), certPath)
+        return fs.readFileSync(fullPath)
+      }
+      // Otherwise, treat as certificate content
+      return certPath
+    } catch (error) {
+      console.warn(`Warning: Could not load certificate from ${certPath}:`, error)
+      return certPath // Return as-is if file reading fails
+    }
+  }
+
   async disconnect(): Promise<void> {
     try {
       if (this.connection) {
-        this.connection.release()
+        this.connection.destroy()
         this.connection = null
       }
 
@@ -74,20 +133,35 @@ export class MySQLConnection extends BaseDatabaseConnection {
     this.validateConnection()
 
     try {
+      if (!this.pool) {
+        throw new Error('MySQL pool not initialized')
+      }
+
       const sanitizedParams = this.sanitizeParams(params)
       
-      // const [rows, fields] = await this.connection.execute(sql, sanitizedParams)
+      // Execute query using pool
+      const [rows, fields] = await this.pool.execute(sql, sanitizedParams) as [any[], mysql.FieldPacket[]]
       
-      // Mock implementation for now
-      const rows: any[] = []
-      const affectedRows = 0
-      const insertId = 0
+      // Handle different result types
+      let affectedRows = 0
+      let insertId: string | number | undefined
+
+      if ('affectedRows' in rows) {
+        affectedRows = (rows as any).affectedRows
+      }
+      if ('insertId' in rows) {
+        insertId = (rows as any).insertId
+      }
 
       return {
         success: true,
-        data: rows as T[],
-        affected: affectedRows,
-        insertId: insertId
+        data: Array.isArray(rows) ? rows as T[] : [],
+        affected: affectedRows || (Array.isArray(rows) ? rows.length : 0),
+        insertId: insertId,
+        metadata: {
+          fieldCount: fields?.length || 0,
+          fields: fields?.map(f => ({ name: f.name, type: f.type })) || []
+        }
       }
     } catch (error) {
       return this.handleError(error, 'query')
@@ -100,38 +174,51 @@ export class MySQLConnection extends BaseDatabaseConnection {
     }
 
     this.validateConnection()
-    // await this.connection.beginTransaction()
+    
+    if (!this.pool) {
+      throw new Error('MySQL pool not initialized')
+    }
+
+    // Get a dedicated connection for the transaction
+    this.connection = await this.pool.getConnection()
+    await this.connection.beginTransaction()
     this._inTransaction = true
   }
 
   async commit(): Promise<void> {
-    if (!this._inTransaction) {
+    if (!this._inTransaction || !this.connection) {
       throw new Error('No transaction in progress')
     }
 
     try {
-      // await this.connection.commit()
+      await this.connection.commit()
     } finally {
+      this.connection.destroy()
+      this.connection = null
       this._inTransaction = false
     }
   }
 
   async rollback(): Promise<void> {
-    if (!this._inTransaction) {
+    if (!this._inTransaction || !this.connection) {
       throw new Error('No transaction in progress')
     }
 
     try {
-      // await this.connection.rollback()
+      await this.connection.rollback()
     } finally {
+      this.connection.destroy()
+      this.connection = null
       this._inTransaction = false
     }
   }
 
   async ping(): Promise<boolean> {
     try {
-      if (!this.connection) return false
-      // await this.connection.ping()
+      if (!this.pool) return false
+      const connection = await this.pool.getConnection()
+      await connection.ping()
+      connection.destroy()
       return true
     } catch {
       return false

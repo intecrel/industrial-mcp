@@ -12,7 +12,12 @@ export interface DatabaseConfig {
   username?: string
   password?: string
   uri?: string
-  ssl?: boolean
+  ssl?: boolean | {
+    ca?: string
+    cert?: string
+    key?: string
+    rejectUnauthorized?: boolean
+  }
   maxConnections?: number
   timeout?: number
 }
