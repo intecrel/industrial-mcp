@@ -24,8 +24,6 @@
     }
   ],
   "env": {
-    "MAC_ADDRESS": "@mac_address",
-    "API_KEY": "@api_key",
     "NODE_ENV": "production"
   }
 }
