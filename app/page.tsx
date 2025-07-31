@@ -5,6 +5,9 @@ import Link from 'next/link'
 
 export default function HomePage() {
   const [status, setStatus] = useState<'verified' | 'not-verified' | 'loading'>('loading')
+  const [macAddress, setMacAddress] = useState('')
+  const [verifying, setVerifying] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     // Check verification status on load
@@ -20,6 +23,45 @@ export default function HomePage() {
     // Basic MAC address validation (XX:XX:XX:XX:XX:XX format)
     const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/
     return macRegex.test(mac)
+  }
+
+  const handleVerification = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    
+    if (!validateMacAddress(macAddress)) {
+      setError('Please enter a valid MAC address (XX:XX:XX:XX:XX:XX)')
+      return
+    }
+
+    setVerifying(true)
+    
+    try {
+      const response = await fetch('/api/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ macAddress }),
+        credentials: 'include'
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        setStatus('verified')
+        // Small delay to show success, then redirect
+        setTimeout(() => {
+          window.location.href = '/dashboard'
+        }, 1000)
+      } else {
+        setError(data.message || 'Verification failed')
+      }
+    } catch (err) {
+      setError('Network error. Please try again.')
+    } finally {
+      setVerifying(false)
+    }
   }
 
   return (
@@ -69,24 +111,66 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="text-center space-x-4">
-          <Link 
-            href="/dashboard"
-            className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Access Dashboard
-          </Link>
-          
-          {status === 'not-verified' && (
-            <button 
-              onClick={() => window.location.href = '/dashboard'}
-              className="inline-flex items-center px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+        {/* Verification Form or Dashboard Access */}
+        {status === 'verified' ? (
+          <div className="text-center">
+            <Link 
+              href="/dashboard"
+              className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
-              Verify Device
-            </button>
-          )}
-        </div>
+              Access Dashboard
+            </Link>
+          </div>
+        ) : status === 'not-verified' ? (
+          <div className="max-w-md mx-auto">
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <h2 className="text-xl font-semibold mb-4 text-center">Device Verification</h2>
+              <p className="text-gray-600 text-sm mb-4 text-center">
+                Enter your device MAC address to verify access
+              </p>
+              
+              <form onSubmit={handleVerification} className="space-y-4">
+                <div>
+                  <label htmlFor="macAddress" className="block text-sm font-medium text-gray-700 mb-1">
+                    MAC Address
+                  </label>
+                  <input
+                    type="text"
+                    id="macAddress"
+                    value={macAddress}
+                    onChange={(e) => setMacAddress(e.target.value)}
+                    placeholder="00:15:5d:77:c8:ae"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={verifying}
+                  />
+                </div>
+                
+                {error && (
+                  <div className="text-red-600 text-sm bg-red-50 p-2 rounded">
+                    {error}
+                  </div>
+                )}
+                
+                <button
+                  type="submit"
+                  disabled={verifying || !macAddress}
+                  className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {verifying ? 'Verifying...' : 'Verify Device'}
+                </button>
+              </form>
+              
+              <div className="mt-4 text-xs text-gray-500 text-center">
+                <p>For testing: 00:15:5d:77:c8:ae</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center">
+            <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4" />
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        )}
 
         {/* MCP Integration Info */}
         <div className="mt-16 bg-white rounded-lg p-8 shadow-sm">

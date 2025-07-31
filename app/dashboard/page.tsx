@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import MCPConnectionInfo from '@/app/components/MCPConnectionInfo'
 
 /**
  * MCP Dashboard – provides connection status, system information
@@ -105,23 +106,31 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* MCP CONNECTION INFORMATION */}
+        <MCPConnectionInfo className="mb-6" />
+
         {/* SYSTEM INFORMATION */}
         <div className="grid md:grid-cols-2 gap-6">
           <div className="bg-white rounded shadow p-6">
-            <h2 className="text-xl font-semibold mb-2">Integration URL</h2>
+            <h2 className="text-xl font-semibold mb-2">Verification URL</h2>
             {/* window check ensures SSR safety */}
             <p className="break-all text-sm text-gray-700">
               {typeof window !== 'undefined'
                 ? `${window.location.origin}/api/verify`
                 : '/api/verify'}
             </p>
+            <p className="text-xs text-gray-500 mt-2">
+              Used for MAC address verification
+            </p>
           </div>
 
           <div className="bg-white rounded shadow p-6">
-            <h2 className="text-xl font-semibold mb-2">Client IP</h2>
-            <p className="text-sm text-gray-700">
-              {/* Placeholder – would normally come from API */}
-              Detected automatically at runtime
+            <h2 className="text-xl font-semibold mb-2">System Status</h2>
+            <p className="text-sm text-gray-700 mb-2">
+              {connected ? '🟢 MCP Server Online' : '🔴 MCP Server Offline'}
+            </p>
+            <p className="text-xs text-gray-500">
+              Industrial tools ready for AI integration
             </p>
           </div>
         </div>
