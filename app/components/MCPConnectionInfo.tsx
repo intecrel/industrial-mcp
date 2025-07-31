@@ -8,7 +8,6 @@ interface MCPConnectionInfoProps {
 
 export default function MCPConnectionInfo({ className = '' }: MCPConnectionInfoProps) {
   const [mcpUrl, setMcpUrl] = useState('')
-  const [industrialMcpUrl, setIndustrialMcpUrl] = useState('')
   const [copied, setCopied] = useState<string | null>(null)
 
   useEffect(() => {
@@ -16,7 +15,6 @@ export default function MCPConnectionInfo({ className = '' }: MCPConnectionInfoP
     if (typeof window !== 'undefined') {
       const baseUrl = window.location.origin
       setMcpUrl(`${baseUrl}/api/mcp`)
-      setIndustrialMcpUrl(`${baseUrl}/api/industrial-mcp`)
     }
   }, [])
 
