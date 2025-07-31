@@ -43,11 +43,14 @@ jobs:
         echo "Waiting for server to start..."
         sleep 15
         
+        # Test that server is responding
+        curl -f http://localhost:3000/api/health || echo "Health check failed, continuing..."
+        
         # Run MCP tests
         node scripts/test-mcp.js --url=http://localhost:3000 --api-key=test-key --mac=84:94:37:e4:24:88 --verbose=false
         
         # Kill the dev server
-        kill $DEV_PID
+        kill $DEV_PID || echo "Dev server already stopped"
 
   deploy:
     needs: test

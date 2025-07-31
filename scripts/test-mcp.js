@@ -10,7 +10,8 @@
  *   node test-mcp.js --url=https://your-deployment.vercel.app --api-key=your-api-key --mac=84:94:37:e4:24:88
  */
 
-const fetch = require('node-fetch');
+// Use built-in fetch for Node.js 18+ or fallback to node-fetch
+const fetch = globalThis.fetch || require('node-fetch').default || require('node-fetch');
 const { URLSearchParams } = require('url');
 const fs = require('fs');
 const path = require('path');
