@@ -89,6 +89,7 @@ export class MySQLConnection extends BaseDatabaseConnection {
     
     this._isConnected = true
     console.log(`✅ MySQL connected via Cloud SQL Connector to ${connectionName}/${this.config.database}`)
+    console.log(`🚀 Cloud SQL Connector: Bypassed IP restrictions, using IAM authentication`)
   }
 
   private async connectDirectly(): Promise<void> {
