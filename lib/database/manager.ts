@@ -34,15 +34,27 @@ export class DatabaseManager {
           await connection.connect()
           this.connections.set(name, connection)
           console.log(`✅ Database connection '${name}' (${config.type}) initialized`)
+          return { name, success: true }
         } catch (error) {
-          console.error(`❌ Failed to initialize connection '${name}' (${config.type}):`, error)
-          throw error
+          console.warn(`⚠️ Failed to initialize connection '${name}' (${config.type}):`, error instanceof Error ? error.message : String(error))
+          return { name, success: false, error }
         }
       }
     )
 
-    await Promise.all(connectionPromises)
-    console.log(`✅ Database Manager initialized with ${this.connections.size} connections`)
+    const results = await Promise.all(connectionPromises)
+    const successful = results.filter(r => r.success)
+    const failed = results.filter(r => !r.success)
+    
+    console.log(`✅ Database Manager initialized with ${successful.length}/${results.length} connections`)
+    if (failed.length > 0) {
+      console.log(`⚠️ Failed connections: ${failed.map(f => f.name).join(', ')}`)
+    }
+    
+    // Only throw error if NO connections were successful
+    if (successful.length === 0) {
+      throw new Error(`Failed to initialize any database connections. Errors: ${failed.map(f => `${f.name}: ${f.error}`).join('; ')}`)
+    }
   }
 
   /**
@@ -249,49 +261,35 @@ export class DatabaseManager {
       const cloudSQLConfig = {
         host: process.env.CLOUD_SQL_HOST,
         port: parseInt(process.env.CLOUD_SQL_PORT || '3306', 10),
-        username: process.env.CLOUD_SQL_USERNAME || 'industrial_mcp',
+        username: process.env.CLOUD_SQL_USERNAME || 'mcp_user',
         password: process.env.CLOUD_SQL_PASSWORD,
         maxConnections: parseInt(process.env.CLOUD_SQL_MAX_CONNECTIONS || '5', 10),
         timeout: parseInt(process.env.CLOUD_SQL_TIMEOUT || '30000', 10),
         ssl: {
-          ca: process.env.CLOUD_SQL_CA_CERT || './certs/server-ca.pem',
-          cert: process.env.CLOUD_SQL_CLIENT_CERT || './certs/client-cert.pem',
-          key: process.env.CLOUD_SQL_CLIENT_KEY || './certs/client-key.pem',
+          ca: process.env.CLOUD_SQL_CA_CERT,
+          cert: process.env.CLOUD_SQL_CLIENT_CERT,
+          key: process.env.CLOUD_SQL_CLIENT_KEY,
           rejectUnauthorized: true
         }
       }
 
-      // Production databases
-      connections.industrial_prod = {
-        type: 'mysql',
-        ...cloudSQLConfig,
-        database: process.env.CLOUD_SQL_DB_INDUSTRIAL || 'industrial_mcp_prod'
+      // Primary database (configure via environment variable)
+      if (process.env.CLOUD_SQL_DB_PRIMARY) {
+        connections.cloud_sql_primary = {
+          type: 'mysql',
+          ...cloudSQLConfig,
+          database: process.env.CLOUD_SQL_DB_PRIMARY
+        }
       }
 
-      connections.operational_prod = {
-        type: 'mysql',
-        ...cloudSQLConfig,
-        database: process.env.CLOUD_SQL_DB_OPERATIONAL || 'operational_data_prod'
-      }
-
-      connections.maintenance_prod = {
-        type: 'mysql',
-        ...cloudSQLConfig,
-        database: process.env.CLOUD_SQL_DB_MAINTENANCE || 'maintenance_records_prod'
-      }
-
-      connections.analytics_prod = {
-        type: 'mysql',
-        ...cloudSQLConfig,
-        database: process.env.CLOUD_SQL_DB_ANALYTICS || 'analytics_data_prod'
-      }
-
-      // Staging database
-      connections.industrial_staging = {
-        type: 'mysql',
-        ...cloudSQLConfig,
-        database: process.env.CLOUD_SQL_DB_STAGING || 'seoptinalytics-staging',
-        maxConnections: 3 // Lower connection limit for staging
+      // Staging database (configure via environment variable)
+      if (process.env.CLOUD_SQL_DB_STAGING) {
+        connections.cloud_sql_staging = {
+          type: 'mysql',
+          ...cloudSQLConfig,
+          database: process.env.CLOUD_SQL_DB_STAGING,
+          maxConnections: 3 // Lower connection limit for staging
+        }
       }
     }
 
@@ -300,7 +298,7 @@ export class DatabaseManager {
       connections.cloudsql_legacy = {
         type: 'mysql',
         host: `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`,
-        database: process.env.CLOUD_SQL_DATABASE || 'industrial_mcp',
+        database: process.env.CLOUD_SQL_DATABASE || 'mcp_database',
         username: process.env.CLOUD_SQL_USERNAME || 'root',
         password: process.env.CLOUD_SQL_PASSWORD,
         ssl: false, // Unix socket connection
@@ -311,12 +309,13 @@ export class DatabaseManager {
     // Determine default connection based on environment
     let defaultConnection = process.env.DEFAULT_DATABASE || 'neo4j'
     
-    // Auto-select primary production database if available
-    if (connections.industrial_prod && process.env.NODE_ENV === 'production') {
-      defaultConnection = 'industrial_prod'
-    } else if (connections.industrial_staging && process.env.NODE_ENV !== 'production') {
-      defaultConnection = 'industrial_staging'
+    // Auto-select primary database if available
+    if (connections.cloud_sql_primary && process.env.NODE_ENV === 'production') {
+      defaultConnection = 'cloud_sql_primary'
+    } else if (connections.cloud_sql_staging && process.env.NODE_ENV !== 'production') {
+      defaultConnection = 'cloud_sql_staging'
     }
+    
 
     return new DatabaseManager({
       connections,

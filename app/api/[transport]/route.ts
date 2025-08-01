@@ -60,15 +60,17 @@ const handler = createMcpHandler(
       })
     );
     
-    // Register industrial system status tool
+    // Register database exploration tool
     server.tool(
-      "get_system_status",
-      "Get the current industrial system status and health metrics",
+      "explore_database",
+      "Explore database structure - list tables, inspect schemas, and discover data",
       {
-        // No parameters needed for basic status check
+        action: z.enum(['list_tables', 'describe_table', 'sample_data']).describe("What to explore: list_tables, describe_table, or sample_data"),
+        table_name: z.string().optional().describe("Table name (required for describe_table and sample_data)"),
+        limit: z.number().optional().describe("Number of sample rows to return (default: 10)")
       },
-      async () => {
-        const cacheKey = getCacheKey('get_system_status', {});
+      async ({ action, table_name, limit = 10 }) => {
+        const cacheKey = getCacheKey('explore_database', { action, table_name, limit });
         
         try {
           // Check cache first
@@ -77,45 +79,40 @@ const handler = createMcpHandler(
             return cachedData;
           }
 
-          const statusData = {
-            status: "operational",
-            uptime: "24h 15m 32s",
-            lastCheck: new Date().toISOString(),
-            systemHealth: {
-              cpu: "45%",
-              memory: "67%",
-              disk: "23%",
-              network: "operational"
-            },
-            alerts: [],
-            activeProcesses: 42
-          }
+          // Import database tools dynamically
+          const { exploreDatabaseStructure } = await import('../mcp/tools/database-explorer')
+          
+          const explorationData = await exploreDatabaseStructure({ 
+            action, 
+            table_name, 
+            limit 
+          })
           
           const response = {
             content: [
               {
                 type: "text",
-                text: JSON.stringify(statusData, null, 2)
+                text: JSON.stringify(explorationData, null, 2)
               }
             ],
           };
 
-          // Cache for 10 seconds (system status changes frequently)
-          setCache(cacheKey, response, 10000);
+          // Cache for 60 seconds (schema info doesn't change frequently)
+          setCache(cacheKey, response, 60000);
           
-          console.log('📊 System status requested successfully')
+          console.log(`🔍 Database exploration requested - Action: ${action}`)
           return response;
         } catch (error) {
-          console.error('❌ Error getting system status:', error)
+          console.error('❌ Error exploring database:', error)
           return {
             content: [
               {
                 type: "text",
                 text: JSON.stringify({
-                  error: "Failed to retrieve system status",
-                  message: "Unable to connect to industrial systems",
+                  error: "Failed to explore database",
+                  message: error instanceof Error ? error.message : "Unable to connect to database",
                   timestamp: new Date().toISOString(),
-                  code: "SYSTEM_STATUS_ERROR"
+                  code: "DATABASE_EXPLORATION_ERROR"
                 }, null, 2)
               }
             ],
@@ -124,16 +121,16 @@ const handler = createMcpHandler(
       }
     );
     
-    // Register operational data tool
+    // Register database query tool
     server.tool(
-      "get_operational_data",
-      "Get real-time operational data from industrial systems",
+      "query_database",
+      "Execute custom SQL queries safely with automatic query validation",
       {
-        timeRange: z.string().optional().describe("Time range for data (e.g., '1h', '24h', '7d')"),
-        system: z.string().optional().describe("Specific system to query")
+        query: z.string().describe("SQL query to execute (SELECT statements only for safety)"),
+        limit: z.number().optional().describe("Maximum number of rows to return (default: 100)")
       },
-      async ({ timeRange = "1h", system = "all" }) => {
-        const cacheKey = getCacheKey('get_operational_data', { timeRange, system });
+      async ({ query, limit = 100 }) => {
+        const cacheKey = getCacheKey('query_database', { query, limit });
         
         try {
           // Check cache first
@@ -142,68 +139,42 @@ const handler = createMcpHandler(
             return cachedData;
           }
 
-          // Validate time range
-          const validTimeRanges = ['1h', '6h', '24h', '7d', '30d']
-          if (timeRange && !validTimeRanges.includes(timeRange)) {
-            throw new Error(`Invalid time range. Valid options: ${validTimeRanges.join(', ')}`)
-          }
-
-          const operationalData = {
-            timeRange,
-            system,
-            timestamp: new Date().toISOString(),
-            metrics: {
-              throughput: "1.2GB/s",
-              activeConnections: 156,
-              errorRate: "0.01%",
-              responseTime: "45ms",
-              queueDepth: 23
-            },
-            performance: {
-              efficiency: "96.7%",
-              availability: "99.9%",
-              reliability: "98.5%"
-            },
-            trends: {
-              last24h: {
-                peakThroughput: "2.1GB/s",
-                avgResponseTime: "52ms",
-                totalRequests: 1_245_678
-              }
-            }
-          }
+          // Import database tools dynamically
+          const { executeCustomQuery } = await import('../mcp/tools/database-explorer')
+          
+          const queryResult = await executeCustomQuery({ query, limit })
 
           const response = {
             content: [
               {
                 type: "text",
-                text: JSON.stringify(operationalData, null, 2)
+                text: JSON.stringify(queryResult, null, 2)
               }
             ],
           };
 
-          // Cache based on time range - longer ranges can be cached longer
-          const cacheDuration = timeRange === '1h' ? 30000 : // 30 seconds
-                               timeRange === '6h' ? 120000 : // 2 minutes  
-                               timeRange === '24h' ? 300000 : // 5 minutes
-                               600000; // 10 minutes for 7d/30d
+          // Cache based on query complexity - simple queries can be cached longer
+          const cacheDuration = query.toLowerCase().includes('now()') || 
+                               query.toLowerCase().includes('current_timestamp') ? 10000 : // 10 seconds for time-sensitive queries
+                               query.toLowerCase().includes('count') || 
+                               query.toLowerCase().includes('sum') ? 60000 : // 1 minute for aggregations
+                               300000; // 5 minutes for static data queries
           
           setCache(cacheKey, response, cacheDuration);
 
-          console.log(`📈 Operational data requested - Range: ${timeRange}, System: ${system}`)
+          console.log(`📊 Database query executed - Length: ${query.length} chars`)
           return response;
         } catch (error) {
-          console.error('❌ Error getting operational data:', error)
+          console.error('❌ Error executing database query:', error)
           return {
             content: [
               {
                 type: "text",
                 text: JSON.stringify({
-                  error: "Failed to retrieve operational data",
-                  message: error instanceof Error ? error.message : "Unable to access operational systems",
+                  error: "Failed to execute database query",
+                  message: error instanceof Error ? error.message : "Query execution failed",
                   timestamp: new Date().toISOString(),
-                  code: "OPERATIONAL_DATA_ERROR",
-                  validTimeRanges: ['1h', '6h', '24h', '7d', '30d']
+                  code: "DATABASE_QUERY_ERROR"
                 }, null, 2)
               }
             ],
@@ -212,73 +183,58 @@ const handler = createMcpHandler(
       }
     );
     
-    // Register equipment monitoring tool
+    // Register analytics helper tool
     server.tool(
-      "monitor_equipment",
-      "Monitor specific industrial equipment status and performance",
+      "analyze_data",
+      "Generate analytics insights from database tables with common patterns",
       {
-        equipmentId: z.string().describe("Equipment identifier to monitor"),
-        includeHistory: z.boolean().optional().describe("Include historical data")
+        table_name: z.string().describe("Table name to analyze"),
+        analysis_type: z.enum(['summary', 'trends', 'distribution']).describe("Type of analysis: summary, trends, or distribution"),
+        date_column: z.string().optional().describe("Date/timestamp column name for trend analysis"),
+        group_by: z.string().optional().describe("Column to group by for distribution analysis")
       },
-      async ({ equipmentId, includeHistory = false }) => {
+      async ({ table_name, analysis_type, date_column, group_by }) => {
         try {
-          // Validate equipment ID format
-          if (!equipmentId || equipmentId.trim().length === 0) {
-            throw new Error("Equipment ID is required and cannot be empty")
-          }
+          const cacheKey = getCacheKey('analyze_data', { table_name, analysis_type, date_column, group_by });
+          const cached = getFromCache(cacheKey);
+          if (cached) return cached;
+
+          // Import analytics tools dynamically
+          const { analyzeTableData } = await import('../mcp/tools/database-explorer')
           
-          if (equipmentId.length > 50) {
-            throw new Error("Equipment ID too long (maximum 50 characters)")
-          }
+          const analysisResult = await analyzeTableData({ 
+            table_name, 
+            analysis_type, 
+            date_column, 
+            group_by 
+          })
 
-          // Simulate equipment lookup
-          const equipmentExists = /^[A-Z0-9-]+$/i.test(equipmentId)
-          if (!equipmentExists) {
-            throw new Error(`Invalid equipment ID format: ${equipmentId}. Use alphanumeric characters and hyphens only.`)
-          }
-
-          const equipmentData = {
-            equipmentId,
-            status: "running",
-            temperature: "72°C",
-            vibration: "normal",
-            pressure: "145 PSI",
-            powerConsumption: "850W",
-            efficiency: "94%",
-            nextMaintenance: "2025-08-15",
-            lastUpdated: new Date().toISOString(),
-            ...(includeHistory && {
-              history: {
-                lastWeek: {
-                  avgTemperature: "70°C",
-                  maxVibration: "2.1mm/s",
-                  downtimeMinutes: 0
-                }
-              }
-            })
-          }
-
-          console.log(`🔧 Equipment monitoring requested - ID: ${equipmentId}, History: ${includeHistory}`)
-          return {
+          const response = {
             content: [
               {
                 type: "text",
-                text: JSON.stringify(equipmentData, null, 2)
+                text: JSON.stringify(analysisResult, null, 2)
               }
             ],
-          }
+          };
+
+          // Cache analysis results for 5 minutes
+          setCache(cacheKey, response, 300000);
+
+          console.log(`📈 Data analysis requested - Table: ${table_name}, Type: ${analysis_type}`)
+          return response;
         } catch (error) {
-          console.error('❌ Error monitoring equipment:', error)
+          console.error('❌ Error analyzing data:', error)
           return {
             content: [
               {
                 type: "text",
                 text: JSON.stringify({
-                  error: "Failed to monitor equipment",
-                  message: error instanceof Error ? error.message : "Unable to access equipment monitoring systems",
+                  error: "Failed to analyze data",
+                  message: error instanceof Error ? error.message : "Data analysis failed",
                   timestamp: new Date().toISOString(),
-                  code: "EQUIPMENT_MONITOR_ERROR",
-                  equipmentId: equipmentId || "unknown"
+                  code: "DATA_ANALYSIS_ERROR",
+                  table_name: table_name || "unknown"
                 }, null, 2)
               }
             ],
@@ -395,14 +351,14 @@ const handler = createMcpHandler(
         echo: {
           description: "Echo a message",
         },
-        get_system_status: {
-          description: "Get industrial system status",
+        explore_database: {
+          description: "Explore database structure and discover data",
         },
-        get_operational_data: {
-          description: "Get operational metrics and data",
+        query_database: {
+          description: "Execute custom SQL queries safely",
         },
-        monitor_equipment: {
-          description: "Monitor specific equipment",
+        analyze_data: {
+          description: "Generate analytics insights from database tables",
         },
         get_cloud_sql_status: {
           description: "Get Cloud SQL database status and health",

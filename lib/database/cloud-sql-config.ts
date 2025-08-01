@@ -1,6 +1,6 @@
 /**
- * Google Cloud SQL configuration for Industrial MCP
- * Supports multiple databases (4 production + 1 staging) with SSL/TLS
+ * Google Cloud SQL configuration for MCP
+ * Flexible configuration for any MySQL database structure with SSL/TLS
  */
 
 import { DatabaseConfig } from './types'
@@ -28,9 +28,9 @@ export interface CloudSQLConfig {
 }
 
 /**
- * Cloud SQL configuration based on your setup:
- * - 1 Enterprise Instance with HA
- * - 5 Databases (4 Production + 1 Staging)
+ * Cloud SQL configuration:
+ * - Enterprise Instance with HA
+ * - Flexible database support (adapts to your data structure)
  * - Public IP with Authorized Networks
  * - SSL/TLS with client certificates
  */
@@ -39,40 +39,25 @@ export function getCloudSQLConfig(): CloudSQLConfig {
     instanceConnectionName: process.env.CLOUD_SQL_CONNECTION_NAME || '',
     
     databases: {
-      // Production databases
-      industrial_prod: {
-        name: 'industrial_mcp_prod',
+      // Primary database - configure via environment variable
+      cloud_sql_primary: {
+        name: process.env.CLOUD_SQL_DB_PRIMARY || '',
         environment: 'production',
-        description: 'Main industrial data and equipment records'
-      },
-      operational_prod: {
-        name: 'operational_data_prod', 
-        environment: 'production',
-        description: 'Real-time operational metrics and sensor data'
-      },
-      maintenance_prod: {
-        name: 'maintenance_records_prod',
-        environment: 'production',  
-        description: 'Equipment maintenance history and scheduling'
-      },
-      analytics_prod: {
-        name: 'analytics_data_prod',
-        environment: 'production',
-        description: 'Historical analytics and reporting data'
+        description: 'Primary database with your data'
       },
       
-      // Staging database
-      industrial_staging: {
-        name: 'industrial_mcp_staging',
+      // Staging database - configure via environment variable
+      cloud_sql_staging: {
+        name: process.env.CLOUD_SQL_DB_STAGING || '',
         environment: 'staging',
         description: 'Staging environment for testing and development'
       }
     },
 
     ssl: {
-      ca: process.env.CLOUD_SQL_CA_CERT || './certs/server-ca.pem',
-      cert: process.env.CLOUD_SQL_CLIENT_CERT || './certs/client-cert.pem', 
-      key: process.env.CLOUD_SQL_CLIENT_KEY || './certs/client-key.pem',
+      ca: process.env.CLOUD_SQL_CA_CERT || '',
+      cert: process.env.CLOUD_SQL_CLIENT_CERT || '',
+      key: process.env.CLOUD_SQL_CLIENT_KEY || '',
       rejectUnauthorized: true // Enforce SSL certificate validation
     },
 
@@ -94,7 +79,7 @@ export function createCloudSQLDatabaseConfigs(): Record<string, DatabaseConfig> 
   // Get common connection details
   const host = process.env.CLOUD_SQL_HOST || process.env.CLOUD_SQL_IP
   const port = parseInt(process.env.CLOUD_SQL_PORT || '3306', 10)
-  const username = process.env.CLOUD_SQL_USERNAME || 'industrial_mcp'
+  const username = process.env.CLOUD_SQL_USERNAME || 'mcp_user'
   const password = process.env.CLOUD_SQL_PASSWORD
 
   if (!host || !password) {
@@ -121,11 +106,11 @@ export function createCloudSQLDatabaseConfigs(): Record<string, DatabaseConfig> 
 }
 
 /**
- * Get the primary production database configuration
+ * Get the primary database configuration
  */
-export function getPrimaryProductionConfig(): DatabaseConfig | null {
+export function getPrimaryConfig(): DatabaseConfig | null {
   const configs = createCloudSQLDatabaseConfigs()
-  return configs.industrial_prod || null
+  return configs.cloud_sql_primary || null
 }
 
 /**
@@ -133,7 +118,7 @@ export function getPrimaryProductionConfig(): DatabaseConfig | null {
  */
 export function getStagingConfig(): DatabaseConfig | null {
   const configs = createCloudSQLDatabaseConfigs()
-  return configs.industrial_staging || null
+  return configs.cloud_sql_staging || null
 }
 
 /**

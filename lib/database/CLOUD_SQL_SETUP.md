@@ -1,11 +1,11 @@
 # Google Cloud SQL Configuration Guide
 
-This guide covers setting up the Industrial MCP application with your Google Cloud SQL Enterprise HA instance.
+This guide covers setting up the MCP application with your Google Cloud SQL Enterprise HA instance.
 
 ## Your Cloud SQL Setup
 
 - **Instance Type**: Enterprise with High Availability (HA)
-- **Databases**: 5 databases (4 Production + 1 Staging)
+- **Database**: Matomo analytics data with IP-enriched visitor information
 - **Connectivity**: Public IP with Authorized Networks
 - **Security**: SSL/TLS encryption with trusted client certificates
 - **Authentication**: SSL-only connections required
@@ -18,120 +18,95 @@ This guide covers setting up the Industrial MCP application with your Google Clo
 # Cloud SQL Connection Details
 CLOUD_SQL_HOST=YOUR_CLOUD_SQL_PUBLIC_IP
 CLOUD_SQL_PORT=3306
-CLOUD_SQL_USERNAME=industrial_mcp
+CLOUD_SQL_USERNAME=your_database_user
 CLOUD_SQL_PASSWORD=YOUR_SECURE_PASSWORD
 
-# SSL Certificate Paths or Content
-CLOUD_SQL_CA_CERT=./certs/server-ca.pem
-CLOUD_SQL_CLIENT_CERT=./certs/client-cert.pem  
-CLOUD_SQL_CLIENT_KEY=./certs/client-key.pem
-
-# Database Names (customize as needed)
-CLOUD_SQL_DB_INDUSTRIAL=industrial_mcp_prod
-CLOUD_SQL_DB_OPERATIONAL=operational_data_prod
-CLOUD_SQL_DB_MAINTENANCE=maintenance_records_prod
-CLOUD_SQL_DB_ANALYTICS=analytics_data_prod
-CLOUD_SQL_DB_STAGING=industrial_mcp_staging
-
-# Connection Tuning
-CLOUD_SQL_MAX_CONNECTIONS=5
-CLOUD_SQL_TIMEOUT=30000
-
-# Default Database Selection
-DEFAULT_DATABASE=industrial_prod  # or industrial_staging for dev/test
-```
-
-### Alternative: Environment-based Certificate Content
-
-Instead of file paths, you can provide certificate content directly:
-
-```bash
+# SSL Certificates (preferred: certificate content, not file paths)
 CLOUD_SQL_CA_CERT="-----BEGIN CERTIFICATE-----
 MIIDfzCCAmegAwIBAgIBADANBgkqhkiG9w0BAQsFADA...
 -----END CERTIFICATE-----"
 
-CLOUD_SQL_CLIENT_CERT="-----BEGIN CERTIFICATE-----
+CLOUD_SQL_CLIENT_CERT="-----BEGIN CERTIFICATE-----  
 MIIDSTCCAjGgAwIBAgIBADANBgkqhkiG9w0BAQsFADA...
 -----END CERTIFICATE-----"
 
 CLOUD_SQL_CLIENT_KEY="-----BEGIN RSA PRIVATE KEY-----
 MIIEpAIBAAKCAQEA4f6wg8OFnGdC8eQ5f3N1l8xJVfU...
 -----END RSA PRIVATE KEY-----"
+
+# Database Names (configure according to your actual databases)
+CLOUD_SQL_DB_PRIMARY=your_primary_database_name
+CLOUD_SQL_DB_STAGING=your_staging_database_name
+
+# Connection Tuning
+CLOUD_SQL_MAX_CONNECTIONS=5
+CLOUD_SQL_TIMEOUT=30000
+
+# Default Database Selection
+DEFAULT_DATABASE=cloud_sql_primary  # or cloud_sql_staging for dev/test
 ```
 
-## Certificate Setup
+## 🔐 Certificate Security
 
-### Option 1: File-based Certificates
+**IMPORTANT**: SSL certificates should NEVER be committed to GitHub.
 
-1. Download your Cloud SQL certificates from Google Cloud Console
-2. Place them in a `certs/` directory:
-   ```
-   certs/
-   ├── server-ca.pem      # Cloud SQL CA certificate
-   ├── client-cert.pem    # Client certificate
-   └── client-key.pem     # Client private key
-   ```
-
-### Option 2: Environment Variables
-
-Set the certificate content directly in environment variables (recommended for production):
+### Recommended Approach: Environment Variables with Certificate Content
+Store the full certificate content directly in environment variables (not file paths):
 
 ```bash
-# Get the certificates from Google Cloud Console or gcloud CLI
+# Get your certificates from Google Cloud Console
 gcloud sql ssl-certs describe CERT_NAME --instance=INSTANCE_NAME --format="value(cert)"
 ```
 
-## Database Schema Setup
+### Legacy File Path Support
+File paths are still supported for local development, but certificate content in environment variables is preferred for production.
 
-The application will automatically create the required tables. The main schemas are:
+## Certificate Setup
 
-### Equipment Table
-```sql
-CREATE TABLE equipment (
-  id VARCHAR(255) PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  type VARCHAR(100) NOT NULL,
-  location VARCHAR(255) NOT NULL,
-  status ENUM('operational', 'maintenance', 'fault', 'offline') NOT NULL,
-  last_maintenance DATETIME,
-  next_maintenance DATETIME,
-  specifications JSON,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+**Recommended**: Store certificate content directly in environment variables.
+
+```bash
+# Get your certificates from Google Cloud Console or gcloud CLI:
+gcloud sql ssl-certs describe YOUR_CERT_NAME --instance=YOUR_INSTANCE_NAME --format="value(cert)"
+gcloud sql ssl-certs describe YOUR_CERT_NAME --instance=YOUR_INSTANCE_NAME --format="value(private_key)"
+gcloud sql instances describe YOUR_INSTANCE_NAME --format="value(serverCaCert.cert)"
 ```
 
-### Operational Data Table
-```sql
-CREATE TABLE operational_data (
-  id VARCHAR(255) PRIMARY KEY,
-  equipment_id VARCHAR(255) NOT NULL,
-  timestamp TIMESTAMP(3) NOT NULL,
-  metrics JSON NOT NULL,
-  alarms JSON,
-  quality ENUM('good', 'uncertain', 'bad') NOT NULL,
-  source VARCHAR(100) NOT NULL,
-  FOREIGN KEY (equipment_id) REFERENCES equipment(id) ON DELETE CASCADE
-);
+**For Development Only**: You can still use file paths, but they should NOT be committed to GitHub:
+```bash
+# Add to .gitignore:
+certs/
+*.pem
+*.key
 ```
 
-### Maintenance Records Table
+## Database Exploration
+
+The MCP provides generic tools to explore and query your database structure dynamically. No predefined schemas are required - the system adapts to whatever tables and data you have.
+
+### Database Discovery Tools
+- **Table listing**: Discover all tables in your database
+- **Schema inspection**: View table structures and column information  
+- **Data sampling**: Preview data from any table
+- **Query execution**: Run custom SQL queries safely
+
+### Example Database Exploration
 ```sql
-CREATE TABLE maintenance_records (
-  id VARCHAR(255) PRIMARY KEY,
-  equipment_id VARCHAR(255) NOT NULL,
-  type ENUM('preventive', 'corrective', 'emergency') NOT NULL,
-  scheduled_date DATETIME NOT NULL,
-  completed_date DATETIME,
-  technician VARCHAR(255),
-  description TEXT NOT NULL,
-  parts JSON,
-  cost DECIMAL(10,2),
-  status ENUM('scheduled', 'in-progress', 'completed', 'cancelled') NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (equipment_id) REFERENCES equipment(id) ON DELETE CASCADE
-);
+-- List all tables
+SHOW TABLES;
+
+-- Inspect table structure
+DESCRIBE your_table_name;
+
+-- Sample data from any table
+SELECT * FROM your_table_name LIMIT 10;
+
+-- Custom analytics queries
+SELECT COUNT(*) as total_records, 
+       DATE(created_at) as date
+FROM your_table_name 
+GROUP BY DATE(created_at) 
+ORDER BY date DESC;
 ```
 
 ## Connection Usage
@@ -142,25 +117,35 @@ import { getGlobalDatabaseManager } from '@/lib/database'
 // Get the database manager
 const dbManager = await getGlobalDatabaseManager()
 
-// Use specific production databases
-const industrialDB = dbManager.getConnection('industrial_prod')
-const operationalDB = dbManager.getConnection('operational_prod') 
-const maintenanceDB = dbManager.getConnection('maintenance_prod')
-const analyticsDB = dbManager.getConnection('analytics_prod')
+// Use primary or staging database connections
+const primaryDB = dbManager.getConnection('cloud_sql_primary')
+const stagingDB = dbManager.getConnection('cloud_sql_staging')
 
-// Use staging database
-const stagingDB = dbManager.getConnection('industrial_staging')
+// Discover database structure
+const tables = await primaryDB.query('SHOW TABLES')
+console.log('Available tables:', tables.data)
 
-// Query examples
-const equipment = await industrialDB.query(
-  'SELECT * FROM equipment WHERE status = ?', 
-  ['operational']
-)
+// Inspect table schema
+const tableSchema = await primaryDB.query('DESCRIBE visitor_info')
+console.log('Table structure:', tableSchema.data)
 
-const recentData = await operationalDB.query(`
-  SELECT * FROM operational_data 
-  WHERE timestamp > DATE_SUB(NOW(), INTERVAL 1 HOUR)
-  ORDER BY timestamp DESC
+// Query examples for analytics data
+const recentVisitors = await primaryDB.query(`
+  SELECT * FROM visitor_data 
+  WHERE visit_date > DATE_SUB(NOW(), INTERVAL 1 DAY)
+  ORDER BY visit_date DESC
+  LIMIT 100
+`)
+
+// Aggregate analytics
+const dailyStats = await primaryDB.query(`
+  SELECT DATE(visit_date) as date,
+         COUNT(*) as total_visits,
+         COUNT(DISTINCT visitor_ip) as unique_visitors
+  FROM visitor_data 
+  WHERE visit_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+  GROUP BY DATE(visit_date)
+  ORDER BY date DESC
 `)
 ```
 
@@ -190,11 +175,9 @@ console.log(healthStatus)
 
 // Example output:
 // {
-//   industrial_prod: { healthy: true, type: 'mysql' },
-//   operational_prod: { healthy: true, type: 'mysql' },
-//   maintenance_prod: { healthy: true, type: 'mysql' },
-//   analytics_prod: { healthy: true, type: 'mysql' },
-//   industrial_staging: { healthy: false, type: 'mysql', error: 'Connection timeout' }
+//   cloud_sql_primary: { healthy: true, type: 'mysql' },
+//   cloud_sql_staging: { healthy: true, type: 'mysql' },
+//   neo4j: { healthy: false, type: 'neo4j', error: 'Connection timeout' }
 // }
 ```
 
@@ -256,11 +239,11 @@ Add these environment variables to your Vercel project:
 ```bash
 # Production
 NODE_ENV=production
-DEFAULT_DATABASE=industrial_prod
+DEFAULT_DATABASE=cloud_sql_primary
 
 # Staging  
 NODE_ENV=staging
-DEFAULT_DATABASE=industrial_staging
+DEFAULT_DATABASE=cloud_sql_staging
 
 # Development (local)
 NODE_ENV=development

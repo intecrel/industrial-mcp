@@ -85,3 +85,16 @@ test-cookies.txt
 *.test.local
 cypress/
 .cypress/
+
+# SSL certificates and sensitive files (NEVER commit these)
+certs/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*-ca.pem
+*-cert.pem
+*-key.pem
+client-*.pem
+server-*.pem

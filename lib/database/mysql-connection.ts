@@ -93,19 +93,31 @@ export class MySQLConnection extends BaseDatabaseConnection {
     return config
   }
 
-  private loadCertificate(certPath: string): string | Buffer {
-    try {
-      // If it's a file path, read the file
-      if (certPath.includes('/') || certPath.includes('\\') || certPath.endsWith('.pem')) {
-        const fullPath = path.isAbsolute(certPath) ? certPath : path.join(process.cwd(), certPath)
-        return fs.readFileSync(fullPath)
-      }
-      // Otherwise, treat as certificate content
-      return certPath
-    } catch (error) {
-      console.warn(`Warning: Could not load certificate from ${certPath}:`, error)
-      return certPath // Return as-is if file reading fails
+  private loadCertificate(certData: string): string | Buffer {
+    if (!certData) {
+      throw new Error('Certificate data is required but not provided')
     }
+
+    // If it looks like certificate content (starts with -----BEGIN), use directly
+    if (certData.includes('-----BEGIN')) {
+      return certData
+    }
+
+    // If it's a file path (legacy support), try to read it
+    if (certData.includes('/') || certData.includes('\\') || certData.endsWith('.pem')) {
+      try {
+        const fullPath = path.isAbsolute(certData) ? certData : path.join(process.cwd(), certData)
+        if (fs.existsSync(fullPath)) {
+          console.warn(`⚠️ Loading certificate from file path. Consider using environment variables with certificate content instead.`)
+          return fs.readFileSync(fullPath)
+        }
+      } catch (error) {
+        console.warn(`Warning: Could not read certificate file ${certData}:`, error)
+      }
+    }
+
+    // Return as-is and let the SSL library handle validation
+    return certData
   }
 
   async disconnect(): Promise<void> {
@@ -280,91 +292,26 @@ export class MySQLConnection extends BaseDatabaseConnection {
     return sql
   }
 
-  // Industrial-specific table schemas
-  static getEquipmentTableSchema(): TableSchema {
+  // Generic helper methods for database exploration
+  
+  /**
+   * Get sample table schema for reference
+   * This is just an example - the system works with any table structure
+   */
+  static getSampleTableSchema(): TableSchema {
     return {
-      name: 'equipment',
+      name: 'sample_table',
       columns: [
         { name: 'id', type: 'VARCHAR(255)', nullable: false },
         { name: 'name', type: 'VARCHAR(255)', nullable: false },
-        { name: 'type', type: 'VARCHAR(100)', nullable: false },
-        { name: 'location', type: 'VARCHAR(255)', nullable: false },
-        { name: 'status', type: 'ENUM("operational", "maintenance", "fault", "offline")', nullable: false },
-        { name: 'last_maintenance', type: 'DATETIME', nullable: true },
-        { name: 'next_maintenance', type: 'DATETIME', nullable: true },
-        { name: 'specifications', type: 'JSON', nullable: true },
+        { name: 'data', type: 'JSON', nullable: true },
         { name: 'created_at', type: 'TIMESTAMP', nullable: false, default: 'CURRENT_TIMESTAMP' },
         { name: 'updated_at', type: 'TIMESTAMP', nullable: false, default: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' }
       ],
       primaryKey: ['id'],
       indexes: [
-        { name: 'idx_equipment_type', columns: ['type'] },
-        { name: 'idx_equipment_status', columns: ['status'] },
-        { name: 'idx_equipment_location', columns: ['location'] }
-      ]
-    }
-  }
-
-  static getOperationalDataTableSchema(): TableSchema {
-    return {
-      name: 'operational_data',
-      columns: [
-        { name: 'id', type: 'VARCHAR(255)', nullable: false },
-        { name: 'equipment_id', type: 'VARCHAR(255)', nullable: false },
-        { name: 'timestamp', type: 'TIMESTAMP(3)', nullable: false },
-        { name: 'metrics', type: 'JSON', nullable: false },
-        { name: 'alarms', type: 'JSON', nullable: true },
-        { name: 'quality', type: 'ENUM("good", "uncertain", "bad")', nullable: false },
-        { name: 'source', type: 'VARCHAR(100)', nullable: false }
-      ],
-      primaryKey: ['id'],
-      indexes: [
-        { name: 'idx_operational_equipment', columns: ['equipment_id'] },
-        { name: 'idx_operational_timestamp', columns: ['timestamp'] },
-        { name: 'idx_operational_quality', columns: ['quality'] }
-      ],
-      foreignKeys: [
-        {
-          column: 'equipment_id',
-          referencedTable: 'equipment',
-          referencedColumn: 'id',
-          onDelete: 'CASCADE'
-        }
-      ]
-    }
-  }
-
-  static getMaintenanceRecordTableSchema(): TableSchema {
-    return {
-      name: 'maintenance_records',
-      columns: [
-        { name: 'id', type: 'VARCHAR(255)', nullable: false },
-        { name: 'equipment_id', type: 'VARCHAR(255)', nullable: false },
-        { name: 'type', type: 'ENUM("preventive", "corrective", "emergency")', nullable: false },
-        { name: 'scheduled_date', type: 'DATETIME', nullable: false },
-        { name: 'completed_date', type: 'DATETIME', nullable: true },
-        { name: 'technician', type: 'VARCHAR(255)', nullable: true },
-        { name: 'description', type: 'TEXT', nullable: false },
-        { name: 'parts', type: 'JSON', nullable: true },
-        { name: 'cost', type: 'DECIMAL(10,2)', nullable: true },
-        { name: 'status', type: 'ENUM("scheduled", "in-progress", "completed", "cancelled")', nullable: false },
-        { name: 'created_at', type: 'TIMESTAMP', nullable: false, default: 'CURRENT_TIMESTAMP' },
-        { name: 'updated_at', type: 'TIMESTAMP', nullable: false, default: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' }
-      ],
-      primaryKey: ['id'],
-      indexes: [
-        { name: 'idx_maintenance_equipment', columns: ['equipment_id'] },
-        { name: 'idx_maintenance_scheduled', columns: ['scheduled_date'] },
-        { name: 'idx_maintenance_status', columns: ['status'] },
-        { name: 'idx_maintenance_type', columns: ['type'] }
-      ],
-      foreignKeys: [
-        {
-          column: 'equipment_id',
-          referencedTable: 'equipment',
-          referencedColumn: 'id',
-          onDelete: 'CASCADE'
-        }
+        { name: 'idx_sample_name', columns: ['name'] },
+        { name: 'idx_sample_created', columns: ['created_at'] }
       ]
     }
   }
