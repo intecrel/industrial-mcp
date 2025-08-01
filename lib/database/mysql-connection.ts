@@ -8,6 +8,9 @@ import { DatabaseConfig, QueryResult, TableSchema } from './types'
 import fs from 'fs'
 import path from 'path'
 
+// Import Cloud SQL Connector
+import { Connector } from '@google-cloud/cloud-sql-connector'
+
 interface MySQLConfig extends DatabaseConfig {
   multipleStatements?: boolean
   charset?: string
@@ -19,6 +22,7 @@ export class MySQLConnection extends BaseDatabaseConnection {
   private connection: mysql.Connection | null = null
   private pool: mysql.Pool | null = null
   private mysqlConfig: MySQLConfig
+  private connector: Connector | null = null
 
   constructor(config: MySQLConfig) {
     super({ ...config, type: 'mysql' })
@@ -26,22 +30,79 @@ export class MySQLConnection extends BaseDatabaseConnection {
   }
 
   async connect(): Promise<void> {
+    // Try Cloud SQL Connector first (for serverless environments)
+    const connectionName = process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME
+    if (connectionName && process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      try {
+        console.log(`🔗 Attempting Cloud SQL Connector connection to ${connectionName}`)
+        await this.connectViaCloudSQLConnector(connectionName)
+        return
+      } catch (error) {
+        console.warn(`⚠️ Cloud SQL Connector failed, falling back to direct connection:`, error instanceof Error ? error.message : String(error))
+      }
+    }
+
+    // Fallback to direct connection
     try {
-      const connectionConfig = this.buildConnectionConfig()
-      
-      // Create connection pool for better performance
-      this.pool = mysql.createPool(connectionConfig)
-      
-      // Test connection
-      this.connection = await this.pool.getConnection()
-      await this.connection.ping()
-      
-      this._isConnected = true
-      console.log(`✅ MySQL connected to ${this.config.host}:${this.config.port}/${this.config.database}`)
+      console.log(`🔗 Attempting direct MySQL connection to ${this.config.host}:${this.config.port}`)
+      await this.connectDirectly()
     } catch (error) {
       console.error('❌ MySQL connection failed:', error)
       throw new Error(`MySQL connection failed: ${error instanceof Error ? error.message : String(error)}`)
     }
+  }
+
+  private async connectViaCloudSQLConnector(connectionName: string): Promise<void> {
+    this.connector = new Connector()
+    
+    const connectionConfig = {
+      user: this.config.username,
+      password: this.config.password,
+      database: this.config.database,
+      connectionLimit: this.config.maxConnections || 10,
+      acquireTimeout: this.config.timeout || 60000,
+      timeout: this.config.timeout || 60000,
+      timezone: 'Z',
+      dateStrings: false,
+      multipleStatements: this.mysqlConfig.multipleStatements || false,
+      charset: this.mysqlConfig.charset || 'utf8mb4',
+      idleTimeout: 300000,
+      keepAliveInitialDelay: 0,
+      enableKeepAlive: true
+    }
+
+    // Get the client connector function
+    const clientOpts = await this.connector.getOptions({
+      instanceConnectionName: connectionName
+      // ipType defaults to 'PUBLIC' - omit for now to avoid TypeScript issues
+    })
+
+    // Create pool with connector options
+    this.pool = mysql.createPool({
+      ...connectionConfig,
+      ...clientOpts
+    })
+
+    // Test connection
+    this.connection = await this.pool.getConnection()
+    await this.connection.ping()
+    
+    this._isConnected = true
+    console.log(`✅ MySQL connected via Cloud SQL Connector to ${connectionName}/${this.config.database}`)
+  }
+
+  private async connectDirectly(): Promise<void> {
+    const connectionConfig = this.buildConnectionConfig()
+    
+    // Create connection pool for better performance
+    this.pool = mysql.createPool(connectionConfig)
+    
+    // Test connection
+    this.connection = await this.pool.getConnection()
+    await this.connection.ping()
+    
+    this._isConnected = true
+    console.log(`✅ MySQL connected directly to ${this.config.host}:${this.config.port}/${this.config.database}`)
   }
 
   private buildConnectionConfig(): any {
@@ -130,6 +191,12 @@ export class MySQLConnection extends BaseDatabaseConnection {
       if (this.pool) {
         await this.pool.end()
         this.pool = null
+      }
+
+      // Close Cloud SQL Connector if it was used
+      if (this.connector) {
+        await this.connector.close()
+        this.connector = null
       }
 
       this._isConnected = false

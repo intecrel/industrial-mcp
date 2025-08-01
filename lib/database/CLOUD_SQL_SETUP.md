@@ -38,12 +38,46 @@ MIIEpAIBAAKCAQEA4f6wg8OFnGdC8eQ5f3N1l8xJVfU...
 CLOUD_SQL_DB_PRIMARY=your_primary_database_name
 CLOUD_SQL_DB_STAGING=your_staging_database_name
 
+# Cloud SQL Connector (Recommended for serverless deployment)
+CLOUD_SQL_INSTANCE_CONNECTION_NAME=your-project:your-region:your-instance
+GOOGLE_APPLICATION_CREDENTIALS={"type":"service_account","project_id":"your-project",...}
+
 # Connection Tuning
 CLOUD_SQL_MAX_CONNECTIONS=5
 CLOUD_SQL_TIMEOUT=30000
 
 # Default Database Selection
 DEFAULT_DATABASE=cloud_sql_primary  # or cloud_sql_staging for dev/test
+```
+
+## 🚀 Connection Methods
+
+### Method 1: Cloud SQL Connector (Recommended for Serverless)
+
+The **Cloud SQL Connector** is the recommended approach for serverless deployments like Vercel:
+
+**Benefits:**
+- ✅ **No IP restrictions** - Works from any IP address
+- ✅ **IAM authentication** - More secure than IP allowlisting
+- ✅ **Automatic SSL** - Handles encryption automatically
+- ✅ **Serverless optimized** - Built for dynamic environments
+
+**Required Variables:**
+```bash
+CLOUD_SQL_INSTANCE_CONNECTION_NAME=your-project:your-region:your-instance
+GOOGLE_APPLICATION_CREDENTIALS={"type":"service_account",...}
+```
+
+### Method 2: Direct Connection (Fallback)
+
+Direct SSL connections are used as a fallback when Cloud SQL Connector isn't available:
+
+**Required Variables:**
+```bash
+CLOUD_SQL_HOST=YOUR_CLOUD_SQL_PUBLIC_IP
+CLOUD_SQL_CA_CERT=certificate_content
+CLOUD_SQL_CLIENT_CERT=certificate_content  
+CLOUD_SQL_CLIENT_KEY=certificate_content
 ```
 
 ## 🔐 Certificate Security
