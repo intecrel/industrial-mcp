@@ -10,6 +10,8 @@ import path from 'path'
 
 // Import Cloud SQL Connector
 import { Connector } from '@google-cloud/cloud-sql-connector'
+import { writeFileSync, unlinkSync } from 'fs'
+import { tmpdir } from 'os'
 
 interface MySQLConfig extends DatabaseConfig {
   multipleStatements?: boolean
@@ -23,6 +25,7 @@ export class MySQLConnection extends BaseDatabaseConnection {
   private pool: mysql.Pool | null = null
   private mysqlConfig: MySQLConfig
   private connector: Connector | null = null
+  private tempCredentialsFile: string | null = null
 
   constructor(config: MySQLConfig) {
     super({ ...config, type: 'mysql' })
@@ -30,16 +33,26 @@ export class MySQLConnection extends BaseDatabaseConnection {
   }
 
   async connect(): Promise<void> {
-    // Try Cloud SQL Connector first (for serverless environments)
+    // Debug environment variables
     const connectionName = process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME
-    if (connectionName && process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const credentialsData = process.env.GOOGLE_APPLICATION_CREDENTIALS
+    
+    console.log(`🔧 Debug: connectionName = "${connectionName}"`)
+    console.log(`🔧 Debug: hasCredentials = ${!!credentialsData}`)
+    console.log(`🔧 Debug: NODE_ENV = "${process.env.NODE_ENV}"`)
+    console.log(`🔧 Debug: VERCEL = "${process.env.VERCEL}"`)
+    
+    // Try Cloud SQL Connector first (for serverless environments)
+    if (connectionName && credentialsData) {
       try {
         console.log(`🔗 Attempting Cloud SQL Connector connection to ${connectionName}`)
-        await this.connectViaCloudSQLConnector(connectionName)
+        await this.connectViaCloudSQLConnector(connectionName, credentialsData)
         return
       } catch (error) {
         console.warn(`⚠️ Cloud SQL Connector failed, falling back to direct connection:`, error instanceof Error ? error.message : String(error))
       }
+    } else {
+      console.log(`🔧 Skipping Cloud SQL Connector: connectionName=${!!connectionName}, hasCredentials=${!!credentialsData}`)
     }
 
     // Fallback to direct connection
@@ -52,44 +65,87 @@ export class MySQLConnection extends BaseDatabaseConnection {
     }
   }
 
-  private async connectViaCloudSQLConnector(connectionName: string): Promise<void> {
-    this.connector = new Connector()
+  private async connectViaCloudSQLConnector(connectionName: string, credentialsData: string): Promise<void> {
+    console.log(`🔧 Cloud SQL Connector: Initializing connector for ${connectionName}`)
     
-    const connectionConfig = {
-      user: this.config.username,
-      password: this.config.password,
-      database: this.config.database,
-      connectionLimit: this.config.maxConnections || 10,
-      acquireTimeout: this.config.timeout || 60000,
-      timeout: this.config.timeout || 60000,
-      timezone: 'Z',
-      dateStrings: false,
-      multipleStatements: this.mysqlConfig.multipleStatements || false,
-      charset: this.mysqlConfig.charset || 'utf8mb4',
-      idleTimeout: 300000,
-      keepAliveInitialDelay: 0,
-      enableKeepAlive: true
+    // Handle credentials - check if it's a file path or JSON content
+    let credentialsPath = credentialsData
+    
+    // If credentials data looks like JSON (starts with {), write it to a temp file
+    if (credentialsData.trim().startsWith('{')) {
+      try {
+        // Validate JSON
+        const credentials = JSON.parse(credentialsData)
+        console.log(`🔧 Cloud SQL Connector: Using service account ${credentials.client_email} from project ${credentials.project_id}`)
+        
+        // Write to temporary file
+        const tempPath = path.join(tmpdir(), `gcp-credentials-${Date.now()}.json`)
+        writeFileSync(tempPath, credentialsData)
+        credentialsPath = tempPath
+        this.tempCredentialsFile = tempPath
+        
+        console.log(`🔧 Cloud SQL Connector: Wrote credentials to temporary file`)
+      } catch (error) {
+        throw new Error(`Invalid GOOGLE_APPLICATION_CREDENTIALS JSON: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    } else {
+      console.log(`🔧 Cloud SQL Connector: Using credentials file path: ${credentialsPath}`)
     }
-
-    // Get the client connector function
-    const clientOpts = await this.connector.getOptions({
-      instanceConnectionName: connectionName
-      // ipType defaults to 'PUBLIC' - omit for now to avoid TypeScript issues
-    })
-
-    // Create pool with connector options
-    this.pool = mysql.createPool({
-      ...connectionConfig,
-      ...clientOpts
-    })
-
-    // Test connection
-    this.connection = await this.pool.getConnection()
-    await this.connection.ping()
     
-    this._isConnected = true
-    console.log(`✅ MySQL connected via Cloud SQL Connector to ${connectionName}/${this.config.database}`)
-    console.log(`🚀 Cloud SQL Connector: Bypassed IP restrictions, using IAM authentication`)
+    // Set the credentials file path for the Google Cloud libraries
+    const originalGoogleCredentials = process.env.GOOGLE_APPLICATION_CREDENTIALS
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath
+    
+    try {
+      this.connector = new Connector()
+      
+      const connectionConfig = {
+        user: this.config.username,
+        password: this.config.password,
+        database: this.config.database,
+        connectionLimit: this.config.maxConnections || 10,
+        acquireTimeout: this.config.timeout || 60000,
+        timeout: this.config.timeout || 60000,
+        timezone: 'Z',
+        dateStrings: false,
+        multipleStatements: this.mysqlConfig.multipleStatements || false,
+        charset: this.mysqlConfig.charset || 'utf8mb4',
+        idleTimeout: 300000,
+        keepAliveInitialDelay: 0,
+        enableKeepAlive: true
+      }
+
+      console.log(`🔧 Cloud SQL Connector: Getting connection options for ${connectionName}`)
+      // Get the client connector function
+      const clientOpts = await this.connector.getOptions({
+        instanceConnectionName: connectionName
+        // ipType defaults to 'PUBLIC' - omit for now to avoid TypeScript issues
+      })
+      
+      console.log(`🔧 Cloud SQL Connector: Received client options, creating pool`)
+
+      // Create pool with connector options
+      this.pool = mysql.createPool({
+        ...connectionConfig,
+        ...clientOpts
+      })
+
+      console.log(`🔧 Cloud SQL Connector: Testing connection...`)
+      // Test connection
+      this.connection = await this.pool.getConnection()
+      await this.connection.ping()
+      
+      this._isConnected = true
+      console.log(`✅ MySQL connected via Cloud SQL Connector to ${connectionName}/${this.config.database}`)
+      console.log(`🚀 Cloud SQL Connector: Bypassed IP restrictions, using IAM authentication`)
+    } finally {
+      // Restore original credentials environment variable
+      if (originalGoogleCredentials) {
+        process.env.GOOGLE_APPLICATION_CREDENTIALS = originalGoogleCredentials
+      } else {
+        delete process.env.GOOGLE_APPLICATION_CREDENTIALS
+      }
+    }
   }
 
   private async connectDirectly(): Promise<void> {
@@ -198,6 +254,17 @@ export class MySQLConnection extends BaseDatabaseConnection {
       if (this.connector) {
         await this.connector.close()
         this.connector = null
+      }
+
+      // Clean up temporary credentials file
+      if (this.tempCredentialsFile) {
+        try {
+          unlinkSync(this.tempCredentialsFile)
+          console.log('🔧 Cleaned up temporary credentials file')
+        } catch (error) {
+          console.warn('⚠️ Failed to clean up temporary credentials file:', error)
+        }
+        this.tempCredentialsFile = null
       }
 
       this._isConnected = false
