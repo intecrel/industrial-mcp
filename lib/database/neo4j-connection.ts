@@ -103,8 +103,8 @@ export class Neo4jConnection extends BaseDatabaseConnection {
           counters.relationshipsDeleted
         ) : 0,
         metadata: {
-          resultAvailableAfter: summary.resultAvailableAfter?.toNumber() || 0,
-          resultConsumedAfter: summary.resultConsumedAfter?.toNumber() || 0,
+          resultAvailableAfter: this.convertToNumber(summary.resultAvailableAfter) || 0,
+          resultConsumedAfter: this.convertToNumber(summary.resultConsumedAfter) || 0,
           counters: counters || {}
         }
       }
@@ -273,5 +273,13 @@ export class Neo4jConnection extends BaseDatabaseConnection {
     }
     
     return converted
+  }
+
+  private convertToNumber(value: any): number {
+    if (value == null) return 0
+    if (typeof value === 'number') return value
+    if (neo4j.isInt(value)) return value.toNumber()
+    if (typeof value === 'string') return parseFloat(value) || 0
+    return 0
   }
 }
