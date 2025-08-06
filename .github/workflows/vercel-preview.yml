@@ -1,0 +1,83 @@
+name: Vercel Preview Deployment
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop, feature/*]
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run linting
+        run: npm run lint
+        
+      - name: Run build
+        run: npm run build
+        
+      - name: Deploy to Vercel Preview
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: ./
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+          
+      - name: Comment PR with Preview URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: deployments } = await github.rest.repos.listDeployments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              environment: 'Preview'
+            });
+            
+            if (deployments.length > 0) {
+              const deployment = deployments[0];
+              const { data: statuses } = await github.rest.repos.listDeploymentStatuses({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                deployment_id: deployment.id
+              });
+              
+              const successStatus = statuses.find(status => status.state === 'success');
+              if (successStatus) {
+                await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: `🚀 **Preview deployment ready!**
+                  
+**🔗 Preview URL:** ${successStatus.target_url}
+
+**📊 MCP Endpoint:** \`${successStatus.target_url}/api/mcp\`
+
+**✅ Test the deployment:**
+- Neo4j Knowledge Graph tools
+- MySQL Analytics (Matomo) tools  
+- Cross-database correlation tools
+- 18 total MCP tools available
+
+**🔑 Testing:** Use your API key with \`x-api-key\` header for MCP endpoints.`
+                });
+              }
+            }

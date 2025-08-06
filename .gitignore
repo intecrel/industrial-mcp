@@ -65,21 +65,18 @@ coverage/
 .vercel
 
 # Project specific files to exclude
-CLAUDE.md
-IMCP_JIRA_TICKETS.csv
-JIRA_SETUP_GUIDE.md
-MCP_SERVER_WORK_SCOPE.md
-PROJECT_PLAN.md
-SPRINT_PLANNING_TEMPLATE.md
 DEPLOYMENT.md
 VERCEL_SETUP.md
-conversation.txt
 cookies.txt
 get-jira-fields.js
 get-priorities.js
 industrial-mcp-backup.tar.gz
 jira-import.js
 test-cookies.txt
+convert-json-to-cypher.js
+test-neo4j-connectivity.js
+test-neo4j-mcp.js
+/mcp-venv/
 
 # Testing artifacts
 *.test.local

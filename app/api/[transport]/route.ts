@@ -735,6 +735,305 @@ const handler = createMcpHandler(
       })
     );
     
+    // Register Matomo Analytics Tools
+    server.tool(
+      "query_matomo_database",
+      "Execute secure parameterized Matomo database queries with injection prevention",
+      {
+        query: z.string().describe("SQL query to execute (SELECT statements only, must target matomo_ tables)"),
+        parameters: z.array(z.any()).optional().describe("Named parameters for the query"),
+        limit: z.number().optional().describe("Maximum number of rows to return (default: 100)")
+      },
+      authenticatedTool("query_matomo_database", async ({ query, parameters = [], limit = 100 }) => {
+        const cacheKey = getCacheKey('query_matomo_database', { query, parameters, limit });
+        
+        try {
+          // Check cache first
+          const cachedData = getFromCache(cacheKey);
+          if (cachedData) {
+            return cachedData;
+          }
+
+          // Import Matomo analytics tools dynamically
+          const { queryMatomoDatabase } = await import('../mcp/tools/mysql-analytics-tools')
+          
+          const queryResult = await queryMatomoDatabase({ query, parameters, limit })
+          
+          const response = {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(queryResult, null, 2)
+              }
+            ],
+          };
+
+          // Cache based on query complexity - analytics queries can be cached for reasonable time
+          const cacheDuration = query.toLowerCase().includes('now()') || 
+                               query.toLowerCase().includes('current_timestamp') ? 30000 : // 30 seconds for time-sensitive queries
+                               query.toLowerCase().includes('count') || 
+                               query.toLowerCase().includes('sum') ? 120000 : // 2 minutes for aggregations
+                               300000; // 5 minutes for static data queries
+          
+          setCache(cacheKey, response, cacheDuration);
+          
+          console.log(`📊 Matomo database query executed - Success: ${queryResult.success}`)
+          return response;
+        } catch (error) {
+          console.error('❌ Error executing Matomo query:', error)
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: "Failed to execute Matomo query",
+                  message: error instanceof Error ? error.message : "Query execution failed",
+                  timestamp: new Date().toISOString(),
+                  code: "MATOMO_QUERY_ERROR"
+                }, null, 2)
+              }
+            ],
+          }
+        }
+      })
+    );
+
+    server.tool(
+      "get_visitor_analytics",
+      "Get visitor analytics including traffic patterns and user behavior from Matomo",
+      {
+        date_range: z.enum(['today', 'yesterday', 'last_7_days', 'last_30_days', 'current_month']).optional().describe("Date range for analytics (default: last_7_days)"),
+        site_id: z.number().optional().describe("Specific site ID to analyze"),
+        limit: z.number().optional().describe("Maximum number of results to return (default: 100)")
+      },
+      authenticatedTool("get_visitor_analytics", async ({ date_range = 'last_7_days', site_id, limit = 100 }) => {
+        const cacheKey = getCacheKey('get_visitor_analytics', { date_range, site_id, limit });
+        
+        try {
+          // Check cache first
+          const cachedData = getFromCache(cacheKey);
+          if (cachedData) {
+            return cachedData;
+          }
+
+          // Import Matomo analytics tools dynamically
+          const { getVisitorAnalytics } = await import('../mcp/tools/mysql-analytics-tools')
+          
+          const analyticsResult = await getVisitorAnalytics({ date_range, site_id, limit })
+          
+          const response = {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(analyticsResult, null, 2)
+              }
+            ],
+          };
+
+          // Cache visitor analytics for 10 minutes
+          setCache(cacheKey, response, 600000);
+          
+          console.log(`📈 Visitor analytics retrieved - Success: ${analyticsResult.success}`)
+          return response;
+        } catch (error) {
+          console.error('❌ Error getting visitor analytics:', error)
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: "Failed to retrieve visitor analytics",
+                  message: error instanceof Error ? error.message : "Analytics retrieval failed",
+                  timestamp: new Date().toISOString(),
+                  code: "VISITOR_ANALYTICS_ERROR"
+                }, null, 2)
+              }
+            ],
+          }
+        }
+      })
+    );
+
+    server.tool(
+      "get_conversion_metrics",
+      "Get conversion metrics including goal tracking and funnel analysis from Matomo",
+      {
+        site_id: z.number().optional().describe("Specific site ID to analyze"),
+        goal_id: z.number().optional().describe("Specific goal ID to analyze"),
+        date_range: z.enum(['today', 'yesterday', 'last_7_days', 'last_30_days', 'current_month']).optional().describe("Date range for metrics (default: last_30_days)"),
+        limit: z.number().optional().describe("Maximum number of results to return (default: 50)")
+      },
+      authenticatedTool("get_conversion_metrics", async ({ site_id, goal_id, date_range = 'last_30_days', limit = 50 }) => {
+        const cacheKey = getCacheKey('get_conversion_metrics', { site_id, goal_id, date_range, limit });
+        
+        try {
+          // Check cache first
+          const cachedData = getFromCache(cacheKey);
+          if (cachedData) {
+            return cachedData;
+          }
+
+          // Import Matomo analytics tools dynamically
+          const { getConversionMetrics } = await import('../mcp/tools/mysql-analytics-tools')
+          
+          const metricsResult = await getConversionMetrics({ site_id, goal_id, date_range, limit })
+          
+          const response = {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(metricsResult, null, 2)
+              }
+            ],
+          };
+
+          // Cache conversion metrics for 15 minutes
+          setCache(cacheKey, response, 900000);
+          
+          console.log(`🎯 Conversion metrics retrieved - Success: ${metricsResult.success}`)
+          return response;
+        } catch (error) {
+          console.error('❌ Error getting conversion metrics:', error)
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: "Failed to retrieve conversion metrics",
+                  message: error instanceof Error ? error.message : "Metrics retrieval failed",
+                  timestamp: new Date().toISOString(),
+                  code: "CONVERSION_METRICS_ERROR"
+                }, null, 2)
+              }
+            ],
+          }
+        }
+      })
+    );
+
+    server.tool(
+      "get_content_performance",
+      "Get content performance including page views, bounce rates, and engagement from Matomo",
+      {
+        site_id: z.number().optional().describe("Specific site ID to analyze"),
+        date_range: z.enum(['today', 'yesterday', 'last_7_days', 'last_30_days', 'current_month']).optional().describe("Date range for performance data (default: last_30_days)"),
+        content_type: z.enum(['pages', 'entry_pages', 'exit_pages']).optional().describe("Type of content analysis (default: pages)"),
+        limit: z.number().optional().describe("Maximum number of results to return (default: 50)")
+      },
+      authenticatedTool("get_content_performance", async ({ site_id, date_range = 'last_30_days', content_type = 'pages', limit = 50 }) => {
+        const cacheKey = getCacheKey('get_content_performance', { site_id, date_range, content_type, limit });
+        
+        try {
+          // Check cache first
+          const cachedData = getFromCache(cacheKey);
+          if (cachedData) {
+            return cachedData;
+          }
+
+          // Import Matomo analytics tools dynamically
+          const { getContentPerformance } = await import('../mcp/tools/mysql-analytics-tools')
+          
+          const performanceResult = await getContentPerformance({ site_id, date_range, content_type, limit })
+          
+          const response = {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(performanceResult, null, 2)
+              }
+            ],
+          };
+
+          // Cache content performance for 10 minutes
+          setCache(cacheKey, response, 600000);
+          
+          console.log(`📄 Content performance retrieved - Success: ${performanceResult.success}`)
+          return response;
+        } catch (error) {
+          console.error('❌ Error getting content performance:', error)
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: "Failed to retrieve content performance",
+                  message: error instanceof Error ? error.message : "Performance analysis failed",
+                  timestamp: new Date().toISOString(),
+                  code: "CONTENT_PERFORMANCE_ERROR"
+                }, null, 2)
+              }
+            ],
+          }
+        }
+      })
+    );
+
+    server.tool(
+      "get_company_intelligence",
+      "Get B2B company intelligence from visitor data using enriched session data",
+      {
+        company_name: z.string().optional().describe("Filter by company name (partial match)"),
+        domain: z.string().optional().describe("Filter by company domain"),
+        country: z.string().optional().describe("Filter by company country"),
+        date_range: z.enum(['today', 'yesterday', 'last_7_days', 'last_30_days', 'current_month']).optional().describe("Date range for intelligence data (default: last_30_days)"),
+        site_id: z.number().optional().describe("Specific site ID to analyze"),
+        limit: z.number().optional().describe("Maximum number of companies to return (default: 50)")
+      },
+      authenticatedTool("get_company_intelligence", async ({ company_name, domain, country, date_range = 'last_30_days', site_id, limit = 50 }) => {
+        const cacheKey = getCacheKey('get_company_intelligence', { company_name, domain, country, date_range, site_id, limit });
+        
+        try {
+          // Check cache first
+          const cachedData = getFromCache(cacheKey);
+          if (cachedData) {
+            return cachedData;
+          }
+
+          // Import Matomo analytics tools dynamically
+          const { getCompanyIntelligence } = await import('../mcp/tools/mysql-analytics-tools')
+          
+          const intelligenceResult = await getCompanyIntelligence({ 
+            company_name, 
+            domain, 
+            country, 
+            date_range, 
+            site_id, 
+            limit 
+          })
+          
+          const response = {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(intelligenceResult, null, 2)
+              }
+            ],
+          };
+
+          // Cache company intelligence for 20 minutes (more expensive queries)
+          setCache(cacheKey, response, 1200000);
+          
+          console.log(`🏢 Company intelligence retrieved - Success: ${intelligenceResult.success}`)
+          return response;
+        } catch (error) {
+          console.error('❌ Error getting company intelligence:', error)
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: "Failed to retrieve company intelligence",
+                  message: error instanceof Error ? error.message : "Intelligence analysis failed",
+                  timestamp: new Date().toISOString(),
+                  code: "COMPANY_INTELLIGENCE_ERROR"
+                }, null, 2)
+              }
+            ],
+          }
+        }
+      })
+    );
+    
     // Register usage analytics tool (admin-only)
     server.tool(
       "get_usage_analytics",
@@ -807,6 +1106,139 @@ const handler = createMcpHandler(
         }
       })
     );
+    
+    // Register Cross-Database Query Tools
+    server.tool(
+      "get_unified_dashboard_data",
+      "Get unified dashboard data combining metrics from both Neo4j (industrial) and MySQL (analytics) databases",
+      {
+        company_name: z.string().optional().describe("Filter by company name for cross-database correlation"),
+        date_range: z.enum(['today', 'yesterday', 'last_7_days', 'last_30_days', 'current_month']).optional().describe("Date range for analytics data (default: last_30_days)"),
+        site_id: z.number().optional().describe("Specific site ID for analytics filtering"),
+        include_web_analytics: z.boolean().optional().describe("Include MySQL web analytics data (default: true)"),
+        include_operational_data: z.boolean().optional().describe("Include Neo4j operational data (default: true)"),
+        limit: z.number().optional().describe("Maximum number of results per data source (default: 50)")
+      },
+      authenticatedTool("get_unified_dashboard_data", async ({ company_name, date_range = 'last_30_days', site_id, include_web_analytics = true, include_operational_data = true, limit = 50 }) => {
+        const cacheKey = getCacheKey('get_unified_dashboard_data', { company_name, date_range, site_id, include_web_analytics, include_operational_data, limit });
+        
+        try {
+          // Check cache first
+          const cachedData = getFromCache(cacheKey);
+          if (cachedData) {
+            return cachedData;
+          }
+          
+          // Import cross-database tools dynamically
+          const { getUnifiedDashboardData } = await import('../mcp/tools/cross-database-tools')
+          
+          const dashboardResult = await getUnifiedDashboardData({ 
+            company_name, 
+            date_range, 
+            site_id, 
+            include_web_analytics, 
+            include_operational_data, 
+            limit 
+          })
+          
+          const response = {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(dashboardResult, null, 2)
+              }
+            ],
+          };
+
+          // Cache unified dashboard data for 10 minutes (combines multiple data sources)
+          setCache(cacheKey, response, 600000);
+
+          console.log(`📊 Unified dashboard data requested - Company: ${company_name || 'all'}, Sources: ${[include_web_analytics && 'MySQL', include_operational_data && 'Neo4j'].filter(Boolean).join(', ')}`)
+          return response;
+        } catch (error) {
+          console.error('❌ Error getting unified dashboard data:', error)
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: "Failed to retrieve unified dashboard data",
+                  message: error instanceof Error ? error.message : "Cross-database query failed",
+                  timestamp: new Date().toISOString(),
+                  code: "UNIFIED_DASHBOARD_ERROR"
+                }, null, 2)
+              }
+            ],
+          }
+        }
+      })
+    );
+    
+    server.tool(
+      "correlate_operational_relationships",
+      "Correlate operational relationships with web analytics data across Neo4j and MySQL databases",
+      {
+        entity_type: z.enum(['Machine', 'Process', 'Service', 'Company', 'Location']).optional().describe("Type of operational entity to correlate (default: Company)"),
+        entity_name: z.string().optional().describe("Specific entity name to correlate"),
+        website_domain: z.string().optional().describe("Website domain for visitor correlation"),
+        date_range: z.enum(['today', 'yesterday', 'last_7_days', 'last_30_days', 'current_month']).optional().describe("Date range for correlation analysis (default: last_30_days)"),
+        correlation_type: z.enum(['visitor_to_entity', 'company_to_operations', 'geographic_correlation']).optional().describe("Type of correlation analysis (default: company_to_operations)"),
+        limit: z.number().optional().describe("Maximum number of correlations to return (default: 30)")
+      },
+      authenticatedTool("correlate_operational_relationships", async ({ entity_type = 'Company', entity_name, website_domain, date_range = 'last_30_days', correlation_type = 'company_to_operations', limit = 30 }) => {
+        const cacheKey = getCacheKey('correlate_operational_relationships', { entity_type, entity_name, website_domain, date_range, correlation_type, limit });
+        
+        try {
+          // Check cache first
+          const cachedData = getFromCache(cacheKey);
+          if (cachedData) {
+            return cachedData;
+          }
+          
+          // Import cross-database tools dynamically
+          const { correlateOperationalRelationships } = await import('../mcp/tools/cross-database-tools')
+          
+          const correlationResult = await correlateOperationalRelationships({ 
+            entity_type, 
+            entity_name, 
+            website_domain, 
+            date_range, 
+            correlation_type, 
+            limit 
+          })
+          
+          const response = {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(correlationResult, null, 2)
+              }
+            ],
+          };
+
+          // Cache correlation data for 15 minutes (complex cross-database analysis)
+          setCache(cacheKey, response, 900000);
+
+          console.log(`🔗 Operational correlation requested - Type: ${correlation_type}, Entity: ${entity_name || entity_type}, Domain: ${website_domain || 'all'}`)
+          return response;
+        } catch (error) {
+          console.error('❌ Error correlating operational relationships:', error)
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: "Failed to correlate operational relationships",
+                  message: error instanceof Error ? error.message : "Cross-database correlation failed",
+                  timestamp: new Date().toISOString(),
+                  code: "OPERATIONAL_CORRELATION_ERROR"
+                }, null, 2)
+              }
+            ],
+          }
+        }
+      })
+    );
   },
   // Capabilities configuration
   {
@@ -844,6 +1276,27 @@ const handler = createMcpHandler(
         },
         get_knowledge_graph_stats: {
           description: "Get knowledge graph statistics and health information",
+        },
+        query_matomo_database: {
+          description: "Execute secure parameterized Matomo database queries",
+        },
+        get_visitor_analytics: {
+          description: "Get visitor analytics and traffic patterns from Matomo",
+        },
+        get_conversion_metrics: {
+          description: "Get conversion metrics and goal tracking from Matomo",
+        },
+        get_content_performance: {
+          description: "Get content performance and page analytics from Matomo",
+        },
+        get_company_intelligence: {
+          description: "Get B2B company intelligence from visitor data",
+        },
+        get_unified_dashboard_data: {
+          description: "Get unified dashboard data combining Neo4j industrial and MySQL analytics data",
+        },
+        correlate_operational_relationships: {
+          description: "Correlate operational relationships with web analytics across databases",
         },
       },
     },
