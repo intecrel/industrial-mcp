@@ -35,32 +35,38 @@ const config = {
   verbose: args.verbose === 'true' || false
 };
 
-// Sample Cypher queries for testing
-const SAMPLE_QUERIES = [
+// Sample MCP tool calls for testing
+const SAMPLE_TOOL_CALLS = [
   {
-    name: 'Get Schema',
-    query: '_GET_SCHEMA',
-    params: {}
+    name: 'Knowledge Graph Stats',
+    tool: 'get_knowledge_graph_stats',
+    args: {}
   },
   {
-    name: 'Count All Nodes',
-    query: 'MATCH (n) RETURN count(n) AS nodeCount',
-    params: {}
+    name: 'Organizational Structure',
+    tool: 'get_organizational_structure',
+    args: { depth: 2 }
   },
   {
-    name: 'Find Workers with Skills',
-    query: 'MATCH (w:Worker)-[:REQUIRES_SKILL]->(s:Skill) RETURN w.name, collect(s.name) AS skills LIMIT 5',
-    params: {}
+    name: 'Query Knowledge Graph - Count Nodes',
+    tool: 'query_knowledge_graph',
+    args: { 
+      query: 'MATCH (n) RETURN count(n) AS nodeCount',
+      limit: 10
+    }
   },
   {
-    name: 'Department Structure',
-    query: 'MATCH (d:Department)<-[:BELONGS_TO]-(w:Worker) RETURN d.name, count(w) AS workerCount ORDER BY workerCount DESC LIMIT 3',
-    params: {}
+    name: 'Query Knowledge Graph - Companies',
+    tool: 'query_knowledge_graph',
+    args: { 
+      query: 'MATCH (c:Company) RETURN c.name, c.industry LIMIT 5',
+      limit: 10
+    }
   },
   {
-    name: 'Capability Network',
-    query: 'MATCH (c:Capability)-[r]-(related) RETURN c.name, type(r), labels(related)[0], related.name LIMIT 10',
-    params: {}
+    name: 'Database Status',
+    tool: 'get_cloud_sql_status',
+    args: { include_details: true }
   }
 ];
 
@@ -83,6 +89,32 @@ const colors = {
 // Helper functions
 function log(message, color = colors.white) {
   console.log(`${color}${message}${colors.reset}`);
+}
+
+// Parse SSE response format
+function parseSSEResponse(sseText) {
+  try {
+    // SSE format: "event: message\ndata: {...}\n\n"
+    const lines = sseText.split('\n');
+    let dataLine = null;
+    
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        dataLine = line.substring(6); // Remove 'data: ' prefix
+        break;
+      }
+    }
+    
+    if (dataLine) {
+      return JSON.parse(dataLine);
+    }
+    
+    // Fallback: try to parse as JSON directly
+    return JSON.parse(sseText);
+  } catch (error) {
+    logVerbose(`Failed to parse SSE response: ${error.message}`);
+    return null;
+  }
 }
 
 function logSuccess(message) {
@@ -166,11 +198,19 @@ async function makeRequest(endpoint, options = {}) {
     if (contentType && contentType.includes('application/json')) {
       data = await response.json();
     } else {
-      data = await response.text();
+      const textData = await response.text();
+      
+      // Try to parse as SSE if it looks like SSE format
+      if (textData.includes('event:') && textData.includes('data:')) {
+        const parsedSSE = parseSSEResponse(textData);
+        data = parsedSSE || textData;
+      } else {
+        data = textData;
+      }
     }
 
     logVerbose(`Response status: ${response.status}`);
-    logVerbose(`Response data: ${typeof data === 'object' ? JSON.stringify(data, null, 2) : data}`);
+    logVerbose(`Response data: ${typeof data === 'object' ? JSON.stringify(data, null, 2) : (typeof data === 'string' ? data.substring(0, 200) + '...' : data)}`);
 
     return {
       status: response.status,
@@ -259,15 +299,26 @@ async function testMcpInfoEndpoint() {
   }
   
   try {
-    const response = await makeRequest('/api/mcp');
+    const response = await makeRequest('/api/mcp', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json, text/event-stream'
+      },
+      body: {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/list'
+      }
+    });
     
-    if (response.status === 200 && response.data.mcp?.status === 'success') {
+    if (response.status === 200 && response.data.result?.tools) {
       logSuccess('MCP info endpoint working correctly.');
-      logInfo(`MCP Version: ${response.data.mcp.version}`);
+      logInfo(`Available tools: ${response.data.result.tools.length}`);
       
-      // Display some info about the resources if available
-      if (response.data.data?.resources?.entityTypes) {
-        logInfo(`Available entity types: ${response.data.data.resources.entityTypes.join(', ')}`);
+      // Display some tool names
+      const toolNames = response.data.result.tools.slice(0, 3).map(t => t.name);
+      if (toolNames.length > 0) {
+        logInfo(`Sample tools: ${toolNames.join(', ')}`);
       }
       
       return true;
@@ -285,54 +336,72 @@ async function testMcpInfoEndpoint() {
 }
 
 async function testMcpQueryEndpoint() {
-  logHeader('Testing MCP Query Endpoint');
+  logHeader('Testing MCP Tool Calls');
   
   if (!config.apiKey) {
-    logWarning('API key not provided. Skipping MCP query tests.');
+    logWarning('API key not provided. Skipping MCP tool tests.');
     return false;
   }
   
-  let allQueriesSuccessful = true;
+  let allToolsSuccessful = true;
   
-  for (const [index, queryInfo] of SAMPLE_QUERIES.entries()) {
-    log(`\nRunning query ${index + 1}/${SAMPLE_QUERIES.length}: ${queryInfo.name}`, colors.cyan);
-    log(`Query: ${queryInfo.query}`, colors.dim);
+  for (const [index, toolCall] of SAMPLE_TOOL_CALLS.entries()) {
+    log(`\nRunning tool ${index + 1}/${SAMPLE_TOOL_CALLS.length}: ${toolCall.name}`, colors.cyan);
+    log(`Tool: ${toolCall.tool}`, colors.dim);
     
     try {
       const response = await makeRequest('/api/mcp', {
         method: 'POST',
+        headers: {
+          'Accept': 'application/json, text/event-stream'
+        },
         body: {
-          query: queryInfo.query,
-          params: queryInfo.params
+          jsonrpc: '2.0',
+          id: index + 2,
+          method: 'tools/call',
+          params: {
+            name: toolCall.tool,
+            arguments: toolCall.args
+          }
         }
       });
       
-      if (response.status === 200 && response.data.mcp?.status === 'success') {
-        logSuccess(`Query "${queryInfo.name}" executed successfully.`);
+      if (response.status === 200 && response.data.result) {
+        logSuccess(`Tool "${toolCall.name}" executed successfully.`);
         
         // Show result summary
-        if (response.data.data?.results) {
-          const resultCount = response.data.data.count || response.data.data.results.length;
-          logInfo(`Results: ${resultCount} records`);
-          
-          // Show a sample of the results if available
-          if (resultCount > 0 && config.verbose) {
-            const sample = response.data.data.results.slice(0, 2);
-            log('Sample results:', colors.dim);
-            console.log(JSON.stringify(sample, null, 2));
+        if (response.data.result.content) {
+          const content = response.data.result.content[0];
+          if (content?.text) {
+            try {
+              const result = JSON.parse(content.text);
+              if (result.success !== false) {
+                logInfo(`Tool executed with success`);
+                if (config.verbose) {
+                  log(`Result: ${content.text.substring(0, 200)}...`, colors.dim);
+                }
+              } else {
+                logWarning(`Tool returned error: ${result.error || 'Unknown error'}`);
+              }
+            } catch {
+              logInfo(`Tool returned text result`);
+              if (config.verbose) {
+                log(`Result: ${content.text.substring(0, 200)}...`, colors.dim);
+              }
+            }
           }
         }
       } else {
-        logError(`Query "${queryInfo.name}" failed: ${JSON.stringify(response.data)}`);
-        allQueriesSuccessful = false;
+        logError(`Tool "${toolCall.name}" failed: ${JSON.stringify(response.data)}`);
+        allToolsSuccessful = false;
       }
     } catch (error) {
-      logError(`Query "${queryInfo.name}" failed: ${error.message}`);
-      allQueriesSuccessful = false;
+      logError(`Tool "${toolCall.name}" failed: ${error.message}`);
+      allToolsSuccessful = false;
     }
   }
   
-  return allQueriesSuccessful;
+  return allToolsSuccessful;
 }
 
 async function testLogout() {
