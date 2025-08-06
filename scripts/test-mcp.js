@@ -115,9 +115,12 @@ function logVerbose(message) {
 
 // Store cookies from response
 function saveCookies(response) {
-  const cookies = response.headers.raw()['set-cookie'];
+  // Use native fetch headers API instead of node-fetch raw()
+  const cookies = response.headers.get('set-cookie');
   if (cookies) {
-    cookies.forEach(cookie => {
+    // Handle multiple cookies (native fetch concatenates them with ', ')
+    const cookieList = cookies.includes(', ') ? cookies.split(', ') : [cookies];
+    cookieList.forEach(cookie => {
       const [nameValue] = cookie.split(';');
       const [name, value] = nameValue.split('=');
       config.cookieJar[name] = value;
