@@ -5,7 +5,8 @@
  * Tests the preview deployment before promoting to production
  */
 
-const fetch = require('node-fetch');
+// Use native fetch (available in Node.js 18+)
+const fetch = globalThis.fetch;
 
 // Configuration
 const config = {
