@@ -64,6 +64,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Setup Node.js for testing
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies for testing
+      run: npm ci
+        
     - name: Deploy to Vercel Preview
       uses: amondnet/vercel-action@v25
       id: vercel-preview
@@ -121,6 +130,15 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Setup Node.js for testing
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies for testing
+      run: npm ci
 
     - name: Deploy to Vercel
       uses: amondnet/vercel-action@v25
