@@ -4,8 +4,8 @@ A comprehensive **Model Context Protocol (MCP)** server designed for industrial 
 
 ## 🚀 Live Demo
 
-- **Production Server**: https://industrial-fvucjqopi-samuels-projects-2dd2e35e.vercel.app
-- **MCP Endpoint**: https://industrial-fvucjqopi-samuels-projects-2dd2e35e.vercel.app/api/mcp
+- **Production Server**: https://industrial-mcp-delta.vercel.app
+- **MCP Endpoint**: https://industrial-mcp-delta.vercel.app/api/mcp
 
 ## ✨ Features
 
@@ -37,7 +37,7 @@ A comprehensive **Model Context Protocol (MCP)** server designed for industrial 
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/samdurso/industrial-mcp.git
+git clone https://github.com/akbarkhawaja/industrial-mcp.git
 cd industrial-mcp
 ```
 

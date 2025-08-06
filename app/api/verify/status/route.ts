@@ -1,6 +1,9 @@
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
+// Force dynamic rendering because this route uses cookies
+export const dynamic = 'force-dynamic'
+
 /**
  * GET handler for verification status endpoint
  * Checks if the user has a valid mcp-verified cookie
