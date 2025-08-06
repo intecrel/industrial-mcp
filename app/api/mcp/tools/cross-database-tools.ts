@@ -162,8 +162,8 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
           `
           
           const orgParams = company_name 
-            ? { company_name, limit: Math.min(limit, 20) }
-            : { limit: Math.min(limit, 20) }
+            ? [company_name, Math.min(limit, 20)]
+            : [Math.min(limit, 20)]
           
           const orgResult = await neo4jConnection.query(orgQuery, orgParams)
           results.operational_data = orgResult.data || []
@@ -203,7 +203,7 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
         const webCompanies = new Set(results.company_analytics.map((c: any) => c.company_name?.toLowerCase()))
         const opCompanies = new Set(results.operational_data.map((c: any) => c.company_name?.toLowerCase()))
         
-        const intersection = new Set([...webCompanies].filter(x => opCompanies.has(x)))
+        const intersection = new Set(Array.from(webCompanies).filter(x => opCompanies.has(x)))
         results.correlations.companies_with_both_data = intersection.size
         
         if (webCompanies.size > 0 && opCompanies.size > 0) {
@@ -285,8 +285,8 @@ export async function correlateOperationalRelationships(options: OperationalCorr
           `
           
           const companyParams = entity_name 
-            ? { entity_name, limit: Math.min(limit, 50) }
-            : { limit: Math.min(limit, 50) }
+            ? [entity_name, Math.min(limit, 50)]
+            : [Math.min(limit, 50)]
           
           const companyResult = await neo4jConnection.query(companyQuery, companyParams)
           

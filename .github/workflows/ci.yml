@@ -2,9 +2,10 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, 'feature/*' ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -52,11 +53,70 @@ jobs:
         # Kill the dev server
         kill $DEV_PID || echo "Dev server already stopped"
 
+  # Preview deployment for non-main branches and PRs
+  deploy-preview:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/main' || github.event_name == 'pull_request'
+    name: Deploy Preview
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Deploy to Vercel Preview
+      uses: amondnet/vercel-action@v25
+      id: vercel-preview
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: ./
+        scope: ${{ secrets.VERCEL_ORG_ID }}
+        
+    - name: Test preview deployment
+      if: success()
+      run: |
+        echo "Testing preview deployment..."
+        sleep 30
+        PREVIEW_URL="${{ steps.vercel-preview.outputs.preview-url }}"
+        if [ -n "$PREVIEW_URL" ]; then
+          echo "Testing preview at: $PREVIEW_URL"
+          node scripts/test-preview.js "$PREVIEW_URL" "${{ secrets.PROD_API_KEY }}"
+        else
+          echo "Preview URL not available, skipping tests"
+        fi
+        
+    - name: Comment PR with preview URL
+      if: github.event_name == 'pull_request' && success()
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const previewUrl = '${{ steps.vercel-preview.outputs.preview-url }}';
+          if (previewUrl) {
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 **Preview deployment ready!**\n\n' +
+                    '**🔗 Preview URL:** ' + previewUrl + '\n' +
+                    '**📊 MCP Endpoint:** `' + previewUrl + '/api/mcp`\n\n' +
+                    '**✅ Test the deployment:**\n' +
+                    '- Neo4j Knowledge Graph tools\n' +
+                    '- MySQL Analytics (Matomo) tools\n' +
+                    '- Cross-database correlation tools\n' +
+                    '- 18+ total MCP tools available\n\n' +
+                    '**🔑 Testing:** Use `x-api-key` header for MCP endpoints.'
+            });
+          }
+
+  # Production deployment for main branch
   deploy:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    name: Deploy to Vercel
+    name: Deploy to Production
     
     steps:
     - name: Checkout code
@@ -73,4 +133,14 @@ jobs:
     - name: Test production deployment
       run: |
         sleep 30  # Wait for deployment to be ready
-        node scripts/test-mcp.js --url=${{ secrets.VERCEL_PROD_URL }} --api-key=${{ secrets.API_KEY }} --mac=${{ secrets.MAC_ADDRESS }} --verbose=false
+        MCP_PROD_URL=https://industrial-mcp-delta.vercel.app \
+        API_KEY=${{ secrets.PROD_API_KEY }} \
+        MAC_ADDRESS=${{ secrets.PROD_MAC_ADDRESS }} \
+        npm run test:prod
+
+    - name: Update deployment status
+      if: success()
+      run: |
+        echo "✅ Production deployment successful!"
+        echo "🔗 Production URL: https://industrial-mcp-delta.vercel.app"
+        echo "📊 MCP Endpoint: https://industrial-mcp-delta.vercel.app/api/mcp"
