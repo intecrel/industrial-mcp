@@ -81,12 +81,20 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold tracking-tight text-blue-700">
           Industrial MCP Dashboard
         </h1>
-        <button
-          onClick={handleLogout}
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded transition-colors"
-        >
-          Logout
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={() => router.push('/admin/api-keys')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors"
+          >
+            🔑 API Keys
+          </button>
+          <button
+            onClick={handleLogout}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded transition-colors"
+          >
+            Logout
+          </button>
+        </div>
       </header>
 
       {/* BODY -------------------------------------------------------- */}

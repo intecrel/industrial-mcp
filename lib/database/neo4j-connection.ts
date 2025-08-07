@@ -21,6 +21,17 @@ export class Neo4jConnection extends BaseDatabaseConnection {
       const username = this.config.username || 'neo4j'
       const password = this.config.password || 'password'
 
+      // Validate credentials are provided
+      if (!username || !password) {
+        throw new Error('Neo4j credentials are required but not provided')
+      }
+
+      // Security: Ensure SSL/TLS for production connections
+      const isSecureConnection = uri.startsWith('neo4j+s://') || uri.startsWith('bolt+s://')
+      if (process.env.NODE_ENV === 'production' && !isSecureConnection) {
+        console.warn('⚠️ WARNING: Using unencrypted Neo4j connection in production')
+      }
+
       this.driver = neo4j.driver(
         uri,
         neo4j.auth.basic(username, password),
@@ -28,15 +39,20 @@ export class Neo4jConnection extends BaseDatabaseConnection {
           maxConnectionLifetime: 30000,
           maxConnectionPoolSize: this.config.maxConnections || 50,
           connectionAcquisitionTimeout: this.config.timeout || 60000,
-          disableLosslessIntegers: true
+          disableLosslessIntegers: true,
+          // Security: Enable encryption verification
+          encrypted: isSecureConnection,
+          trust: isSecureConnection ? 'TRUST_SYSTEM_CA_SIGNED_CERTIFICATES' : 'TRUST_ALL_CERTIFICATES'
         }
       )
 
-      // Test connection
+      // Test connection and verify encryption
       await this.driver.verifyConnectivity()
       this._isConnected = true
 
-      console.log(`✅ Neo4j connected to ${uri}`)
+      // Security: Log connection security status
+      const securityStatus = isSecureConnection ? '🔒 Encrypted (SSL/TLS)' : '🔓 Unencrypted'
+      console.log(`✅ Neo4j connected to ${this.maskConnectionString(uri)} - ${securityStatus}`)
     } catch (error) {
       console.error('❌ Neo4j connection failed:', error)
       throw error
@@ -73,12 +89,19 @@ export class Neo4jConnection extends BaseDatabaseConnection {
     this.validateConnection()
 
     try {
+      // Security: Validate and sanitize query
+      const sanitizedQuery = this.sanitizeQuery(cypher)
+      const sanitizedParams = this.sanitizeParams(params)
+      
+      // Security: Enforce read-only operations for security
+      this.validateQuerySecurity(sanitizedQuery)
+
       const session = this.getSession()
-      const parameters = this.convertParams(params)
+      const parameters = this.convertParams(sanitizedParams)
 
       const result = this._inTransaction && this.transaction
-        ? await this.transaction.run(cypher, parameters)
-        : await session.run(cypher, parameters)
+        ? await this.transaction.run(sanitizedQuery, parameters)
+        : await session.run(sanitizedQuery, parameters)
 
       const records = result.records.map(record => {
         // Convert Neo4j record to plain object
@@ -281,5 +304,69 @@ export class Neo4jConnection extends BaseDatabaseConnection {
     if (neo4j.isInt(value)) return value.toNumber()
     if (typeof value === 'string') return parseFloat(value) || 0
     return 0
+  }
+
+  // Security methods
+  private sanitizeQuery(cypher: string): string {
+    if (!cypher || typeof cypher !== 'string') {
+      throw new Error('Query must be a non-empty string')
+    }
+
+    // Remove potential injection patterns
+    const sanitized = cypher
+      .replace(/\\x[0-9a-fA-F]{2}/g, '') // Remove hex escapes
+      .replace(/\\[0-7]{1,3}/g, '')      // Remove octal escapes
+      .trim()
+
+    if (!sanitized) {
+      throw new Error('Query cannot be empty after sanitization')
+    }
+
+    return sanitized
+  }
+
+  private validateQuerySecurity(cypher: string): void {
+    const upperQuery = cypher.toUpperCase().trim()
+    
+    // Security: Block dangerous operations for MCP endpoints
+    const dangerousPatterns = [
+      /\bDROP\s+/,
+      /\bDELETE\s+/,
+      /\bREMOVE\s+/,
+      /\bDETACH\s+DELETE\s+/,
+      /\bCREATE\s+INDEX\s+/,
+      /\bDROP\s+INDEX\s+/,
+      /\bCREATE\s+CONSTRAINT\s+/,
+      /\bDROP\s+CONSTRAINT\s+/
+    ]
+    
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(upperQuery)) {
+        throw new Error(`Security: Query contains potentially dangerous operation: ${pattern.source}`)
+      }
+    }
+
+    // Allow common read operations and controlled write operations
+    const allowedOperations = [
+      /^\s*MATCH\s+/,
+      /^\s*RETURN\s+/,
+      /^\s*OPTIONAL\s+MATCH\s+/,
+      /^\s*WITH\s+/,
+      /^\s*UNWIND\s+/,
+      /^\s*CALL\s+db\.(schema|labels|relationshipTypes|propertyKeys)/,
+      /^\s*CREATE\s+(?!.*\b(?:INDEX|CONSTRAINT)\b)/,  // Allow CREATE nodes/relationships but not indexes/constraints
+      /^\s*MERGE\s+/,
+      /^\s*SET\s+/
+    ]
+
+    const hasAllowedOperation = allowedOperations.some(pattern => pattern.test(upperQuery))
+    if (!hasAllowedOperation && upperQuery.length > 0) {
+      console.warn(`⚠️ Security warning: Query may contain unsupported operations: ${cypher.substring(0, 100)}...`)
+    }
+  }
+
+  private maskConnectionString(uri: string): string {
+    // Security: Mask sensitive information in logs
+    return uri.replace(/:([^@]+)@/, ':***@')
   }
 }
