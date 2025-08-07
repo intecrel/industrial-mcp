@@ -143,26 +143,35 @@ export class CORSManager {
    */
   setCORSHeaders(
     request: { method?: string; headers?: { origin?: string } },
-    response: { setHeader: (key: string, value: string) => void },
+    response: { setHeader?: (key: string, value: string) => void; headers?: { set: (key: string, value: string) => void } },
     config?: CORSConfig
   ): void {
     const corsConfig = config || this.getCORSConfig(process.env.NODE_ENV as any)
     const origin = request.headers?.origin
 
+    // Helper function to set headers on both response types
+    const setHeader = (key: string, value: string) => {
+      if (response.setHeader) {
+        response.setHeader(key, value)
+      } else if (response.headers?.set) {
+        response.headers.set(key, value)
+      }
+    }
+
     // Handle preflight requests
     if (request.method === 'OPTIONS') {
       if (origin && this.isValidOrigin(origin, corsConfig.origins)) {
-        response.setHeader('Access-Control-Allow-Origin', origin)
+        setHeader('Access-Control-Allow-Origin', origin)
       } else if (corsConfig.origins === '*') {
-        response.setHeader('Access-Control-Allow-Origin', '*')
+        setHeader('Access-Control-Allow-Origin', '*')
       }
 
-      response.setHeader('Access-Control-Allow-Methods', corsConfig.methods.join(', '))
-      response.setHeader('Access-Control-Allow-Headers', corsConfig.headers.join(', '))
-      response.setHeader('Access-Control-Max-Age', corsConfig.maxAge.toString())
+      setHeader('Access-Control-Allow-Methods', corsConfig.methods.join(', '))
+      setHeader('Access-Control-Allow-Headers', corsConfig.headers.join(', '))
+      setHeader('Access-Control-Max-Age', corsConfig.maxAge.toString())
       
       if (corsConfig.credentials) {
-        response.setHeader('Access-Control-Allow-Credentials', 'true')
+        setHeader('Access-Control-Allow-Credentials', 'true')
       }
       
       return
@@ -170,31 +179,40 @@ export class CORSManager {
 
     // Handle actual requests
     if (origin && this.isValidOrigin(origin, corsConfig.origins)) {
-      response.setHeader('Access-Control-Allow-Origin', origin)
-      response.setHeader('Vary', 'Origin')
+      setHeader('Access-Control-Allow-Origin', origin)
+      setHeader('Vary', 'Origin')
     } else if (corsConfig.origins === '*') {
-      response.setHeader('Access-Control-Allow-Origin', '*')
+      setHeader('Access-Control-Allow-Origin', '*')
     }
 
     if (corsConfig.credentials) {
-      response.setHeader('Access-Control-Allow-Credentials', 'true')
+      setHeader('Access-Control-Allow-Credentials', 'true')
     }
 
     // Expose headers that clients can access
-    response.setHeader('Access-Control-Expose-Headers', 'Content-Length, Date, Server, X-RateLimit-*')
+    setHeader('Access-Control-Expose-Headers', 'Content-Length, Date, Server, X-RateLimit-*')
   }
 
   /**
    * Set security headers on response
    */
   setSecurityHeaders(
-    response: { setHeader: (key: string, value: string) => void },
+    response: { setHeader?: (key: string, value: string) => void; headers?: { set: (key: string, value: string) => void } },
     environment?: 'development' | 'production' | 'test'
   ): void {
     const headers = this.getSecurityHeaders(environment)
     
+    // Helper function to set headers on both response types
+    const setHeader = (key: string, value: string) => {
+      if (response.setHeader) {
+        response.setHeader(key, value)
+      } else if (response.headers?.set) {
+        response.headers.set(key, value)
+      }
+    }
+    
     Object.entries(headers).forEach(([key, value]) => {
-      response.setHeader(key, value)
+      setHeader(key, value)
     })
   }
 
