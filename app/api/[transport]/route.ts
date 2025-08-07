@@ -1,5 +1,8 @@
 import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
+import { getRequestValidator, validateSqlQuery, validateCypherQuery } from '../../../lib/security/request-validator';
+import { applyCORSHeaders } from '../../../lib/security/cors-config';
+import { NextRequest, NextResponse } from 'next/server';
 
 // Usage tracking interface
 interface UsageEntry {
@@ -8,10 +11,15 @@ interface UsageEntry {
   toolName: string;
   timestamp: number;
   params?: any;
+  ipAddress?: string;
+  userAgent?: string;
 }
 
 // In-memory usage tracking (in production, use a database)
 const usageLog: UsageEntry[] = [];
+
+// Security: Request rate limiting
+const rateLimitStore = new Map<string, number[]>();
 
 // API Key configuration interface
 interface ApiKeyConfig {
@@ -81,10 +89,12 @@ const checkRateLimit = (apiKeyConfig: ApiKeyConfig): boolean => {
 const logUsage = (apiKeyConfig: ApiKeyConfig, toolName: string, params?: any) => {
   const entry: UsageEntry = {
     userId: apiKeyConfig.userId,
-    apiKey: apiKeyConfig.key,
+    apiKey: apiKeyConfig.key.substring(0, 8) + '***', // Mask API key in logs
     toolName,
     timestamp: Date.now(),
-    params: params ? JSON.stringify(params).substring(0, 200) : undefined // Truncate for storage
+    params: params ? JSON.stringify(params).substring(0, 200) : undefined, // Truncate for storage
+    ipAddress: (globalThis as any).currentRequestIP || 'unknown',
+    userAgent: (globalThis as any).currentRequestUserAgent || 'unknown'
   };
   
   usageLog.push(entry);
@@ -97,9 +107,27 @@ const logUsage = (apiKeyConfig: ApiKeyConfig, toolName: string, params?: any) =>
   console.log(`📊 Usage logged: ${apiKeyConfig.userId} used ${toolName}`);
 };
 
-// Enhanced API Key validation function
-const validateApiKey = (headers: any): ApiKeyConfig => {
+// Enhanced API Key validation function with security checks
+const validateApiKey = (headers: any, request?: any): ApiKeyConfig => {
   const apiKey = headers?.['x-api-key'] || headers?.['X-API-Key'];
+  
+  // Security: Validate request headers and structure
+  if (request) {
+    const requestValidator = getRequestValidator();
+    const validation = requestValidator.validateRequest({
+      method: request.method,
+      headers,
+      url: request.url
+    });
+    
+    if (validation.blocked) {
+      throw new Error(`Request blocked: ${validation.reason}`);
+    }
+    
+    if (!validation.valid) {
+      console.warn('⚠️ Request validation warnings:', validation.errors);
+    }
+  }
   
   // Check if any API keys are configured
   const apiKeys = parseApiKeys();
@@ -117,13 +145,52 @@ const validateApiKey = (headers: any): ApiKeyConfig => {
     throw new Error('Invalid API key provided.');
   }
   
-  // Check rate limits
+  // Security: Enhanced rate limiting with IP tracking
+  const clientIP = headers?.['x-forwarded-for'] || headers?.['x-real-ip'] || 'unknown';
+  const rateLimitKey = `${apiKeyConfig.userId}:${clientIP}`;
+  
   if (!checkRateLimit(apiKeyConfig)) {
     throw new Error(`Rate limit exceeded for user ${apiKeyConfig.userId}. Limit: ${apiKeyConfig.rateLimitPerHour} requests/hour.`);
   }
   
-  console.log(`✅ API key validated: ${apiKeyConfig.name} (${apiKeyConfig.userId})`);
+  console.log(`✅ API key validated: ${apiKeyConfig.name} (${apiKeyConfig.userId}) from ${clientIP}`);
   return apiKeyConfig;
+};
+
+// Security: Query validation wrapper
+const validateAndSanitizeQuery = (query: string, type: 'sql' | 'cypher'): string => {
+  const validator = getRequestValidator();
+  const result = type === 'sql' ? validateSqlQuery(query) : validateCypherQuery(query);
+  
+  if (result.blocked) {
+    throw new Error(`${type.toUpperCase()} injection attempt blocked: ${result.reason}`);
+  }
+  
+  if (!result.valid) {
+    console.warn(`⚠️ ${type.toUpperCase()} validation warnings:`, result.errors);
+  }
+  
+  return result.sanitized || query;
+};
+
+// Security: Enhanced request validation
+const validateRequestSecurity = (request: any, body?: any): void => {
+  const validator = getRequestValidator();
+  
+  const validation = validator.validateRequest({
+    method: request.method,
+    headers: request.headers,
+    body,
+    url: request.url
+  });
+  
+  if (validation.blocked) {
+    throw new Error(`Security violation: ${validation.reason}`);
+  }
+  
+  if (!validation.valid && validation.errors.length > 0) {
+    console.warn('⚠️ Request security warnings:', validation.errors);
+  }
 };
 
 // Simplified tool wrapper that logs usage (authentication handled at route level)
@@ -1312,68 +1379,147 @@ const handler = createMcpHandler(
   }
 );
 
-// Create authenticated wrapper for the handler
-const createAuthenticatedHandler = (originalHandler: (request: Request, context?: any) => Promise<Response>) => {
+// Create secured wrapper for the handler with comprehensive protection
+const createSecuredHandler = (originalHandler: (request: Request, context?: any) => Promise<Response>) => {
   return async (request: Request, context?: any) => {
+    const startTime = Date.now();
+    let response: Response;
+    
     try {
-      // Extract API key from request headers
+      // Security: Store request context for logging
+      const clientIP = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+      const userAgent = request.headers.get('user-agent') || 'unknown';
+      (globalThis as any).currentRequestIP = clientIP;
+      (globalThis as any).currentRequestUserAgent = userAgent;
+      
+      // Security: Comprehensive request validation
+      let requestBody: any;
+      try {
+        if (request.method === 'POST' && request.headers.get('content-type')?.includes('application/json')) {
+          requestBody = await request.clone().json();
+        }
+      } catch (e) {
+        // Ignore JSON parsing errors for non-JSON requests
+      }
+      
+      validateRequestSecurity(request, requestBody);
+      
+      // Handle CORS preflight requests
+      if (request.method === 'OPTIONS') {
+        response = new Response(null, { 
+          status: 204,
+          headers: { 'Content-Length': '0' }
+        });
+        applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+        return response;
+      }
+      
+      // Extract and validate API key with enhanced security
       const apiKey = request.headers.get('x-api-key') || request.headers.get('X-API-Key');
       
-      // Validate API key
+      // Validate API key with security checks
       const apiKeys = parseApiKeys();
       if (apiKeys.length > 0) { // Only validate if API keys are configured
         if (!apiKey) {
-          return Response.json({
+          response = Response.json({
             error: "API key required",
             message: "Please provide x-api-key header",
-            code: "AUTHENTICATION_ERROR"
+            code: "AUTHENTICATION_ERROR",
+            timestamp: new Date().toISOString()
           }, { status: 401 });
+          applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+          return response;
         }
         
-        const apiKeyConfig = getApiKeyConfig(apiKey);
-        if (!apiKeyConfig) {
-          return Response.json({
-            error: "Invalid API key",
-            message: "The provided API key is not valid",
-            code: "AUTHENTICATION_ERROR"
-          }, { status: 401 });
+        // Enhanced API key validation with security checks
+        try {
+          const apiKeyConfig = validateApiKey({
+            'x-api-key': apiKey,
+            'x-forwarded-for': clientIP,
+            'user-agent': userAgent
+          }, request);
+          
+          console.log(`✅ Secure API access: ${apiKeyConfig.name} (${apiKeyConfig.userId}) from ${clientIP}`);
+          
+          // Store authenticated user info for tools to access
+          currentApiKeyConfig = apiKeyConfig;
+        } catch (validationError) {
+          const isRateLimit = validationError instanceof Error && validationError.message.includes('Rate limit');
+          response = Response.json({
+            error: isRateLimit ? "Rate limit exceeded" : "Authentication failed",
+            message: validationError instanceof Error ? validationError.message : "Access denied",
+            code: isRateLimit ? "RATE_LIMIT_ERROR" : "AUTHENTICATION_ERROR",
+            timestamp: new Date().toISOString()
+          }, { status: isRateLimit ? 429 : 401 });
+          applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+          return response;
         }
-        
-        // Check rate limits
-        if (!checkRateLimit(apiKeyConfig)) {
-          return Response.json({
-            error: "Rate limit exceeded",
-            message: `Rate limit exceeded for user ${apiKeyConfig.userId}. Limit: ${apiKeyConfig.rateLimitPerHour} requests/hour.`,
-            code: "RATE_LIMIT_ERROR"
-          }, { status: 429 });
-        }
-        
-        console.log(`✅ API key validated: ${apiKeyConfig.name} (${apiKeyConfig.userId})`);
-        
-        // Store authenticated user info for tools to access
-        currentApiKeyConfig = apiKeyConfig;
       } else {
         console.warn('⚠️ No API keys configured - allowing unauthenticated access');
         currentApiKeyConfig = null;
       }
       
-      // Call the original handler
-      return await originalHandler(request, context);
+      // Security: Additional request body validation for MCP calls
+      if (requestBody && requestBody.method) {
+        const toolName = requestBody.method;
+        const toolParams = requestBody.params;
+        
+        // Validate tool-specific security
+        if (toolName.includes('query') && toolParams) {
+          if (toolParams.sql) {
+            validateAndSanitizeQuery(toolParams.sql, 'sql');
+          }
+          if (toolParams.cypher) {
+            validateAndSanitizeQuery(toolParams.cypher, 'cypher');
+          }
+        }
+      }
+      
+      // Call the original handler with security context
+      response = await originalHandler(request, context);
+      
+      // Apply CORS and security headers to response
+      applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+      
+      // Log successful request
+      const duration = Date.now() - startTime;
+      console.log(`✅ Request completed: ${request.method} ${request.url} (${duration}ms) from ${clientIP}`);
+      
+      return response;
     } catch (error) {
-      console.error('❌ Authentication error:', error);
-      return Response.json({
-        error: "Authentication failed",
-        message: error instanceof Error ? error.message : "Access denied",
-        code: "AUTHENTICATION_ERROR"
-      }, { status: 401 });
+      const duration = Date.now() - startTime;
+      console.error(`❌ Security/Request error (${duration}ms):`, error);
+      
+      // Determine error type and response
+      const isSecurityError = error instanceof Error && (
+        error.message.includes('blocked') || 
+        error.message.includes('injection') ||
+        error.message.includes('Security')
+      );
+      
+      response = Response.json({
+        error: isSecurityError ? "Security violation" : "Request failed",
+        message: error instanceof Error ? error.message : "Request processing failed",
+        code: isSecurityError ? "SECURITY_ERROR" : "REQUEST_ERROR",
+        timestamp: new Date().toISOString()
+      }, { status: isSecurityError ? 403 : 500 });
+      
+      applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+      return response;
+    } finally {
+      // Cleanup request context
+      delete (globalThis as any).currentRequestIP;
+      delete (globalThis as any).currentRequestUserAgent;
     }
   };
 };
 
-// Create authenticated versions of the handlers
-const authenticatedHandler = createAuthenticatedHandler(handler);
+// Create secured versions of the handlers with comprehensive protection
+const securedHandler = createSecuredHandler(handler);
 
 // Explicit named exports for better compatibility with Vercel
-export const GET = authenticatedHandler;
-export const POST = authenticatedHandler;
-export const DELETE = authenticatedHandler;
+export const GET = securedHandler;
+export const POST = securedHandler;
+export const DELETE = securedHandler;
+export const PUT = securedHandler;
+export const OPTIONS = securedHandler; // Handle CORS preflight

@@ -158,8 +158,12 @@ export class MySQLConnection extends BaseDatabaseConnection {
     this.connection = await this.pool.getConnection()
     await this.connection.ping()
     
+    // Security: Verify SSL connection if enabled
+    const sslStatus = await this.verifySSLConnection()
+    
     this._isConnected = true
-    console.log(`✅ MySQL connected directly to ${this.config.host}:${this.config.port}/${this.config.database}`)
+    const securityInfo = sslStatus ? '🔒 SSL/TLS Encrypted' : '🔓 Unencrypted'
+    console.log(`✅ MySQL connected directly to ${this.maskConnectionString(`${this.config.host}:${this.config.port}`)}/${this.config.database} - ${securityInfo}`)
   }
 
   private buildConnectionConfig(): any {
@@ -449,5 +453,90 @@ export class MySQLConnection extends BaseDatabaseConnection {
         { name: 'idx_sample_created', columns: ['created_at'] }
       ]
     }
+  }
+
+  // Security methods
+  private sanitizeQuery(sql: string): string {
+    if (!sql || typeof sql !== 'string') {
+      throw new Error('SQL query must be a non-empty string')
+    }
+
+    // Remove potential injection patterns
+    const sanitized = sql
+      .replace(/\\x[0-9a-fA-F]{2}/g, '') // Remove hex escapes
+      .replace(/\\[0-7]{1,3}/g, '')      // Remove octal escapes  
+      .replace(/\/\*[\s\S]*?\*\//g, '')   // Remove block comments
+      .replace(/--[^\r\n]*/g, '')       // Remove line comments
+      .trim()
+
+    if (!sanitized) {
+      throw new Error('SQL query cannot be empty after sanitization')
+    }
+
+    return sanitized
+  }
+
+  private validateQuerySecurity(sql: string): void {
+    const upperSql = sql.toUpperCase().trim()
+    
+    // Security: Block dangerous operations for MCP endpoints
+    const dangerousPatterns = [
+      /\bDROP\s+/,
+      /\bDELETE\s+FROM\s+/,
+      /\bTRUNCATE\s+/,
+      /\bALTER\s+/,
+      /\bCREATE\s+(?:TABLE|INDEX|VIEW|PROCEDURE|FUNCTION)\s+/,
+      /\bGRANT\s+/,
+      /\bREVOKE\s+/,
+      /\bLOAD_FILE\s*\(/,
+      /\bINTO\s+OUTFILE\s+/,
+      /\bINTO\s+DUMPFILE\s+/
+    ]
+    
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(upperSql)) {
+        throw new Error(`Security: SQL query contains potentially dangerous operation: ${pattern.source}`)
+      }
+    }
+
+    // Allow common read operations and controlled write operations
+    const allowedOperations = [
+      /^\s*SELECT\s+/,
+      /^\s*SHOW\s+/,
+      /^\s*DESCRIBE\s+/,
+      /^\s*EXPLAIN\s+/,
+      /^\s*INSERT\s+INTO\s+/,
+      /^\s*UPDATE\s+.*\s+SET\s+/,
+      /^\s*REPLACE\s+INTO\s+/
+    ]
+
+    const hasAllowedOperation = allowedOperations.some(pattern => pattern.test(upperSql))
+    if (!hasAllowedOperation && upperSql.length > 0) {
+      console.warn(`⚠️ Security warning: SQL query may contain unsupported operations: ${sql.substring(0, 100)}...`)
+    }
+  }
+
+  private async verifySSLConnection(): Promise<boolean> {
+    try {
+      if (!this.connection) return false
+      
+      const [rows] = await this.connection.execute('SHOW STATUS LIKE "Ssl_cipher"') as [any[], any]
+      const sslCipher = rows.find((row: any) => row.Variable_name === 'Ssl_cipher')
+      
+      if (sslCipher && sslCipher.Value) {
+        console.log(`🔒 MySQL SSL connection verified: ${sslCipher.Value}`)
+        return true
+      }
+      
+      return false
+    } catch (error) {
+      console.warn('⚠️ Could not verify SSL status:', error)
+      return false
+    }
+  }
+
+  private maskConnectionString(hostPort: string): string {
+    // Security: Mask sensitive information in logs
+    return hostPort.replace(/:\d+$/, ':***')
   }
 }

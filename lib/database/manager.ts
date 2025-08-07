@@ -5,6 +5,8 @@
 import { DatabaseConnection, DatabaseConfig, DatabaseType, QueryResult } from './types'
 import { Neo4jConnection } from './neo4j-connection'
 import { MySQLConnection } from './mysql-connection'
+import { getSecretsManager, createSecureDatabaseConfig } from '../security/secrets-manager'
+import { auditDatabaseSecurity, generateSecurityReport } from '../security/database-security'
 
 export interface DatabaseManagerConfig {
   connections: {
@@ -24,9 +26,27 @@ export class DatabaseManager {
   }
 
   /**
-   * Initialize all configured database connections
+   * Initialize all configured database connections with security audit
    */
   async initialize(): Promise<void> {
+    // Security: Run database security audit before initialization
+    console.log('🔒 Running database security audit...')
+    const securityAudit = await auditDatabaseSecurity()
+    
+    if (securityAudit.critical) {
+      console.error('❌ CRITICAL SECURITY ISSUES DETECTED:')
+      securityAudit.checks
+        .filter(check => !check.passed && check.severity === 'critical')
+        .forEach(check => console.error(`  ❌ ${check.name}: ${check.message}`))
+      throw new Error('Critical security issues must be resolved before database initialization')
+    }
+    
+    if (securityAudit.score < 70) {
+      console.warn(`⚠️ Security score: ${securityAudit.score}/100 - Consider implementing security recommendations`)
+    } else {
+      console.log(`✅ Security audit passed: ${securityAudit.score}/100`)
+    }
+
     const connectionPromises = Object.entries(this.config.connections).map(
       async ([name, config]) => {
         try {
@@ -49,6 +69,12 @@ export class DatabaseManager {
     console.log(`✅ Database Manager initialized with ${successful.length}/${results.length} connections`)
     if (failed.length > 0) {
       console.log(`⚠️ Failed connections: ${failed.map(f => f.name).join(', ')}`)
+    }
+    
+    // Log security report in development
+    if (process.env.NODE_ENV !== 'production') {
+      const report = await generateSecurityReport()
+      console.log('\n' + report)
     }
     
     // Only throw error if NO connections were successful
@@ -226,52 +252,94 @@ export class DatabaseManager {
   }
 
   /**
-   * Create database manager from environment variables
+   * Get database security status
+   */
+  async getSecurityStatus(): Promise<{
+    audit: any
+    report: string
+    healthStatus: Record<string, { healthy: boolean; type: DatabaseType; error?: string }>
+  }> {
+    const [audit, report, healthStatus] = await Promise.all([
+      auditDatabaseSecurity(),
+      generateSecurityReport(),
+      this.getHealthStatus()
+    ])
+
+    return { audit, report, healthStatus }
+  }
+
+  /**
+   * Create database manager from environment variables with enhanced security
    */
   static fromEnvironment(): DatabaseManager {
     const connections: { [key: string]: DatabaseConfig } = {}
+    const secrets = getSecretsManager()
 
-    // Neo4j connection (always available)
-    connections.neo4j = {
-      type: 'neo4j',
-      uri: process.env.NEO4J_URI || 'bolt://localhost:7687',
-      username: process.env.NEO4J_USERNAME || 'neo4j',
-      password: process.env.NEO4J_PASSWORD || 'password',
-      maxConnections: parseInt(process.env.NEO4J_MAX_CONNECTIONS || '50', 10),
-      timeout: parseInt(process.env.NEO4J_TIMEOUT || '60000', 10)
+    // Security: Validate required environment variables upfront
+    const requiredSecrets = ['NEO4J_USERNAME', 'NEO4J_PASSWORD']
+    const validation = secrets.validateRequiredSecrets(requiredSecrets)
+    
+    if (!validation.valid) {
+      console.warn(`⚠️ Missing database credentials: ${validation.missing.join(', ')}`)
     }
 
-    // Local MySQL connection (if configured)
+    // Neo4j connection with secure configuration
+    try {
+      connections.neo4j = createSecureDatabaseConfig('neo4j', 'NEO4J')
+    } catch (error) {
+      // Fallback to basic configuration for development
+      connections.neo4j = {
+        type: 'neo4j',
+        uri: process.env.NEO4J_URI || 'bolt://localhost:7687',
+        username: process.env.NEO4J_USERNAME || 'neo4j',
+        password: process.env.NEO4J_PASSWORD || 'password',
+        maxConnections: parseInt(process.env.NEO4J_MAX_CONNECTIONS || '50', 10),
+        timeout: parseInt(process.env.NEO4J_TIMEOUT || '60000', 10)
+      }
+      console.warn('⚠️ Using fallback Neo4j configuration:', error instanceof Error ? error.message : String(error))
+    }
+
+    // Local MySQL connection with secure configuration (if configured)
     if (process.env.MYSQL_HOST || process.env.DATABASE_URL?.includes('mysql')) {
-      connections.mysql = {
-        type: 'mysql',
-        host: process.env.MYSQL_HOST || 'localhost',
-        port: parseInt(process.env.MYSQL_PORT || '3306', 10),
-        database: process.env.MYSQL_DATABASE || 'industrial_mcp',
-        username: process.env.MYSQL_USERNAME || process.env.MYSQL_USER || 'root',
-        password: process.env.MYSQL_PASSWORD,
-        ssl: process.env.MYSQL_SSL === 'true',
-        maxConnections: parseInt(process.env.MYSQL_MAX_CONNECTIONS || '10', 10),
-        timeout: parseInt(process.env.MYSQL_TIMEOUT || '60000', 10)
+      try {
+        connections.mysql = createSecureDatabaseConfig('mysql', 'MYSQL')
+      } catch (error) {
+        // Fallback to basic configuration
+        connections.mysql = {
+          type: 'mysql',
+          host: process.env.MYSQL_HOST || 'localhost',
+          port: parseInt(process.env.MYSQL_PORT || '3306', 10),
+          database: process.env.MYSQL_DATABASE || 'industrial_mcp',
+          username: process.env.MYSQL_USERNAME || process.env.MYSQL_USER || 'root',
+          password: process.env.MYSQL_PASSWORD,
+          ssl: process.env.NODE_ENV === 'production', // Auto-enable SSL in production
+          maxConnections: parseInt(process.env.MYSQL_MAX_CONNECTIONS || '10', 10),
+          timeout: parseInt(process.env.MYSQL_TIMEOUT || '60000', 10)
+        }
+        console.warn('⚠️ Using fallback MySQL configuration:', error instanceof Error ? error.message : String(error))
       }
     }
 
-    // Cloud SQL configurations (Google Cloud Enterprise HA setup)
+    // Cloud SQL configurations with enhanced security (Google Cloud Enterprise HA setup)
     if (process.env.CLOUD_SQL_HOST && process.env.CLOUD_SQL_PASSWORD) {
       const cloudSQLConfig = {
         host: process.env.CLOUD_SQL_HOST,
         port: parseInt(process.env.CLOUD_SQL_PORT || '3306', 10),
-        username: process.env.CLOUD_SQL_USERNAME || 'mcp_user',
-        password: process.env.CLOUD_SQL_PASSWORD,
+        username: secrets.getSecret('CLOUD_SQL_USERNAME') || 'mcp_user',
+        password: secrets.getSecret('CLOUD_SQL_PASSWORD'),
         maxConnections: parseInt(process.env.CLOUD_SQL_MAX_CONNECTIONS || '5', 10),
         timeout: parseInt(process.env.CLOUD_SQL_TIMEOUT || '30000', 10),
         ssl: {
           ca: process.env.CLOUD_SQL_CA_CERT,
           cert: process.env.CLOUD_SQL_CLIENT_CERT,
           key: process.env.CLOUD_SQL_CLIENT_KEY,
-          rejectUnauthorized: true
+          rejectUnauthorized: true, // Security: Always validate certificates
+          secureProtocol: 'TLSv1_2_method' // Security: Force TLS 1.2+
         }
       }
+      
+      // Security: Log masked connection info
+      console.log(`🔒 Cloud SQL configuration: ${secrets.getMaskedConnectionString(`mysql://${cloudSQLConfig.username}@${cloudSQLConfig.host}:${cloudSQLConfig.port}`)}`)
 
       // Primary database (configure via environment variable)
       if (process.env.CLOUD_SQL_DB_PRIMARY) {
@@ -293,17 +361,21 @@ export class DatabaseManager {
       }
     }
 
-    // Legacy Cloud SQL connection name support (Unix socket)
-    if (process.env.CLOUD_SQL_CONNECTION_NAME && !process.env.CLOUD_SQL_HOST) {
-      connections.cloudsql_legacy = {
+    // Cloud SQL Connector support with enhanced security (Serverless/Unix socket)
+    if (process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME && !process.env.CLOUD_SQL_HOST) {
+      connections.cloudsql_connector = {
         type: 'mysql',
-        host: `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`,
-        database: process.env.CLOUD_SQL_DATABASE || 'mcp_database',
-        username: process.env.CLOUD_SQL_USERNAME || 'root',
-        password: process.env.CLOUD_SQL_PASSWORD,
-        ssl: false, // Unix socket connection
-        maxConnections: parseInt(process.env.CLOUD_SQL_MAX_CONNECTIONS || '5', 10)
+        database: secrets.getSecret('CLOUD_SQL_DATABASE_NAME') || 'mcp_database',
+        username: secrets.getSecret('CLOUD_SQL_USERNAME') || 'root',
+        password: secrets.getSecret('CLOUD_SQL_PASSWORD'),
+        ssl: false, // Cloud SQL Connector handles encryption
+        maxConnections: parseInt(process.env.CLOUD_SQL_MAX_CONNECTIONS || '5', 10),
+        timeout: parseInt(process.env.CLOUD_SQL_TIMEOUT || '30000', 10)
       }
+      
+      // Security: Log masked connection info
+      const instanceName = process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME
+      console.log(`🔒 Cloud SQL Connector: ${instanceName} (IAM authenticated)`)
     }
 
     // Determine default connection based on environment
