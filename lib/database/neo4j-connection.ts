@@ -32,18 +32,24 @@ export class Neo4jConnection extends BaseDatabaseConnection {
         console.warn('⚠️ WARNING: Using unencrypted Neo4j connection in production')
       }
 
+      // Build driver config - don't specify encryption when URI already has it
+      const driverConfig: any = {
+        maxConnectionLifetime: 30000,
+        maxConnectionPoolSize: this.config.maxConnections || 50,
+        connectionAcquisitionTimeout: this.config.timeout || 60000,
+        disableLosslessIntegers: true,
+      }
+
+      // Only add encryption config if URI doesn't already specify it
+      if (!uri.includes('+s://')) {
+        driverConfig.encrypted = isSecureConnection
+        driverConfig.trust = isSecureConnection ? 'TRUST_SYSTEM_CA_SIGNED_CERTIFICATES' : 'TRUST_ALL_CERTIFICATES'
+      }
+
       this.driver = neo4j.driver(
         uri,
         neo4j.auth.basic(username, password),
-        {
-          maxConnectionLifetime: 30000,
-          maxConnectionPoolSize: this.config.maxConnections || 50,
-          connectionAcquisitionTimeout: this.config.timeout || 60000,
-          disableLosslessIntegers: true,
-          // Security: Enable encryption verification
-          encrypted: isSecureConnection,
-          trust: isSecureConnection ? 'TRUST_SYSTEM_CA_SIGNED_CERTIFICATES' : 'TRUST_ALL_CERTIFICATES'
-        }
+        driverConfig
       )
 
       // Test connection and verify encryption
