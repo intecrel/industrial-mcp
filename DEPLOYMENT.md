@@ -438,7 +438,7 @@ vercel --debug
 5. **Deployment**: Vercel deployment URL and build logs
 
 #### Contact & Support
-- **GitHub Issues**: [Repository Issues Page](https://github.com/akbarkhawaja/industrial-mcp/issues)
+- **GitHub Issues**: [Repository Issues Page](https://github.com/intecrel/industrial-mcp/issues)
 - **Documentation**: This DEPLOYMENT.md file and CLAUDE.md
 - **Testing**: Use provided test scripts for systematic debugging
 

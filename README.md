@@ -37,7 +37,7 @@ A comprehensive **Model Context Protocol (MCP)** server designed for industrial 
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/akbarkhawaja/industrial-mcp.git
+git clone https://github.com/intecrel/industrial-mcp.git
 cd industrial-mcp
 ```
 
