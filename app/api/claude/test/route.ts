@@ -52,8 +52,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     let authTest = null;
-    let tools = [];
-    let scopes = [];
+    let tools: any[] = [];
+    let scopes: string[] = [];
 
     // Test authenticated connection if Authorization header is provided
     const authHeader = request.headers.get('authorization');

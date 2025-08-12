@@ -187,7 +187,7 @@ export async function GET(request: NextRequest) {
 
     // Filter by requested transport
     if (transport !== 'all' && transportConfig.transports[transport as keyof typeof transportConfig.transports]) {
-      const singleTransport = {
+      const singleTransport: any = {
         ...transportConfig,
         transport: transportConfig.transports[transport as keyof typeof transportConfig.transports]
       };

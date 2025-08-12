@@ -32,6 +32,7 @@
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@vercel/mcp-adapter": "1.0.0",
     "jose": "^6.0.12",
+    "lucide-react": "^0.539.0",
     "mysql2": "^3.6.5",
     "neo4j-driver": "^5.28.1",
     "next": "14.2.30",
