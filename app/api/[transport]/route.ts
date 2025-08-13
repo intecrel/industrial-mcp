@@ -1390,7 +1390,7 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
         requestBody.method === 'initialize' ||
         requestBody.method === 'capabilities' ||
         requestBody.method === 'server/info' ||
-        requestBody.method === 'tools/list' || // Allow tools/list for discovery, but actual tool calls require auth
+        // Remove tools/list - it should require authentication to trigger Connect button
         !requestBody.method // Allow metadata requests
       );
       
@@ -1451,7 +1451,7 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
           }, { 
             status: 401,
             headers: {
-              'WWW-Authenticate': `Bearer realm="MCP Server", authorization_uri="${baseUrl}/.well-known/oauth-authorization-server"`
+              'WWW-Authenticate': `Bearer realm="MCP Server", authorization_uri="${baseUrl}/api/oauth/authorize", error="invalid_token", error_description="Authentication required"`
             }
           });
           applyCORSHeaders(request, response, process.env.NODE_ENV as any);

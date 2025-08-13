@@ -68,7 +68,7 @@ const initializeDefaultClients = () => {
     ], // Claude.ai OAuth callbacks including official MCP callback
     grant_types: ['authorization_code', 'client_credentials'],
     response_types: ['code'],
-    scope: 'mcp:tools mcp:resources mcp:prompts',
+    scope: 'claudeai',
     token_endpoint_auth_method: 'none', // Public client for Claude.ai web
     application_type: 'web',
     created_at: Date.now(),
