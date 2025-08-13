@@ -5,11 +5,10 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
-
-export default function ConsentPage() {
+function ConsentForm() {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -148,5 +147,19 @@ export default function ConsentPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ConsentPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="text-center">Loading...</div>
+        </div>
+      </div>
+    }>
+      <ConsentForm />
+    </Suspense>
   )
 }

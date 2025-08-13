@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Force dynamic rendering for admin routes that use request headers
+export const dynamic = 'force-dynamic';
+
 // Mock usage data - in production this would come from the actual usage log
 const getMockUsageStats = () => {
   return {

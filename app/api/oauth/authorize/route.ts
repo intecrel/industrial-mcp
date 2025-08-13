@@ -9,6 +9,9 @@ import { validateClient, validateRedirectUri } from '../../../../lib/oauth/clien
 import { validateScopes } from '../../../../lib/oauth/scopes';
 import { isValidCodeChallenge } from '../../../../lib/oauth/pkce';
 
+// Force dynamic rendering for OAuth routes
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
