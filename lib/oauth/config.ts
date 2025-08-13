@@ -20,12 +20,11 @@ export interface OAuthConfig {
  * Get OAuth configuration with dynamic URL support for Vercel deployments
  */
 export const getOAuthConfig = (): OAuthConfig => {
-  // Dynamic base URL configuration for Vercel's random URLs
-  const baseUrl = process.env.VERCEL_URL 
-    ? `https://${process.env.VERCEL_URL}` 
-    : process.env.NODE_ENV === 'development'
+  // Always use the custom production domain for OAuth to ensure consistency
+  // Claude.ai needs stable URLs that don't change with deployments
+  const baseUrl = process.env.NODE_ENV === 'development'
     ? 'http://localhost:3000'
-    : 'https://industrial-mcp-delta.vercel.app'; // production fallback
+    : 'https://industrial-mcp-delta.vercel.app'; // Always use custom domain in production
 
   return {
     issuer: baseUrl,
