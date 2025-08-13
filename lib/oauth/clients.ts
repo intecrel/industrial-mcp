@@ -55,21 +55,21 @@ const initializeDefaultClients = () => {
     updated_at: Date.now(),
   };
   
-  // Claude.ai web client
+  // Claude.ai web client (matches dynamic registration pattern)
   const claudeWebClient: OAuthClient = {
     client_id: 'claude-web',
-    client_name: 'Claude.ai Web',
+    client_name: 'Claude',
     redirect_uris: [
       'https://claude.ai/api/mcp/auth_callback', // Official Claude.ai MCP OAuth callback
       'https://claude.ai/oauth/callback',
       'https://claude.ai/api/organizations/*/mcp/callback', 
       'https://claude.ai/settings/connectors',
       'https://claude.ai/'
-    ], // Claude.ai OAuth callbacks including official MCP callback
-    grant_types: ['authorization_code', 'client_credentials'],
+    ], 
+    grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
-    scope: 'claudeai',
-    token_endpoint_auth_method: 'none', // Public client for Claude.ai web
+    scope: 'mcp:tools mcp:resources mcp:prompts claudeai read:analytics read:knowledge admin:usage',
+    token_endpoint_auth_method: 'client_secret_post', // Matches Claude.ai's registration
     application_type: 'web',
     created_at: Date.now(),
     updated_at: Date.now(),
