@@ -17,7 +17,9 @@ export async function POST(request: NextRequest) {
     let registrationRequest: ClientRegistrationRequest;
     try {
       registrationRequest = await request.json();
+      console.log('📋 Client registration request:', JSON.stringify(registrationRequest, null, 2));
     } catch (error) {
+      console.error('❌ Invalid JSON in registration request:', error);
       return createErrorResponse('invalid_request', 'Invalid JSON in request body');
     }
     

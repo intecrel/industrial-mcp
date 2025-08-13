@@ -1488,50 +1488,83 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
         return response;
       }
       
+      // Check if this is an MCP discovery call that should be allowed without authentication
+      // Claude.ai needs to discover available tools before authentication can complete
+      const isDiscoveryCall = requestBody && (
+        requestBody.method === 'tools/list' ||
+        requestBody.method === 'resources/list' ||
+        requestBody.method === 'prompts/list' ||
+        requestBody.method === 'ping' ||
+        requestBody.method === 'initialize' ||
+        requestBody.method === 'list_tools' ||
+        requestBody.method === 'list_resources' ||
+        requestBody.method === 'list_prompts' ||
+        requestBody.method === 'capabilities' ||
+        requestBody.method === 'server/info' ||
+        !requestBody.method // Allow metadata requests
+      );
+      
+      // Also allow GET requests for metadata discovery and MCP protocol discovery
+      const isMetadataRequest = request.method === 'GET';
+      
+      // Allow HEAD requests for connectivity checks
+      const isConnectivityCheck = request.method === 'HEAD';
+      
       // Dual Authentication: Support both OAuth Bearer tokens and API key authentication
-      try {
-        // Create a minimal NextRequest-compatible object for authentication
-        const requestForAuth = {
-          headers: {
-            get: (name: string) => request.headers.get(name)
-          },
-          url: request.url,
-          method: request.method
-        } as NextRequest;
-        
-        const authContext = await authenticateRequest(requestForAuth);
-        
-        // Store authenticated user info for tools to access
-        currentAuthContext = authContext;
-        
-        // If using MAC address authentication, also populate legacy API key config
-        if (authContext.method === 'mac_address') {
-          // Create compatible API key config for legacy usage logging
-          currentApiKeyConfig = {
-            key: 'mac_address_auth',
-            userId: authContext.userId,
-            name: 'MAC Address Authentication',
-            permissions: authContext.permissions
-          };
-        } else {
-          currentApiKeyConfig = null; // OAuth doesn't use legacy API key config
+      // Allow discovery calls, metadata requests, and connectivity checks without authentication for Claude.ai compatibility
+      if (!isDiscoveryCall && !isMetadataRequest && !isConnectivityCheck) {
+        try {
+          // Create a minimal NextRequest-compatible object for authentication
+          const requestForAuth = {
+            headers: {
+              get: (name: string) => request.headers.get(name)
+            },
+            url: request.url,
+            method: request.method
+          } as NextRequest;
+          
+          const authContext = await authenticateRequest(requestForAuth);
+          
+          // Store authenticated user info for tools to access
+          currentAuthContext = authContext;
+          
+          // If using MAC address authentication, also populate legacy API key config
+          if (authContext.method === 'mac_address') {
+            // Create compatible API key config for legacy usage logging
+            currentApiKeyConfig = {
+              key: 'mac_address_auth',
+              userId: authContext.userId,
+              name: 'MAC Address Authentication',
+              permissions: authContext.permissions
+            };
+          } else {
+            currentApiKeyConfig = null; // OAuth doesn't use legacy API key config
+          }
+          
+          console.log(`✅ Dual authentication success: ${getAuthInfo(authContext)} from ${clientIP}`);
+          
+        } catch (authError) {
+          console.error('❌ Authentication failed:', authError);
+          const errorResponse = createAuthError(
+            authError instanceof Error ? authError.message : 'Authentication failed',
+            401
+          );
+          
+          response = Response.json({
+            ...errorResponse,
+            timestamp: new Date().toISOString()
+          }, { status: 401 });
+          applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+          return response;
         }
-        
-        console.log(`✅ Dual authentication success: ${getAuthInfo(authContext)} from ${clientIP}`);
-        
-      } catch (authError) {
-        console.error('❌ Authentication failed:', authError);
-        const errorResponse = createAuthError(
-          authError instanceof Error ? authError.message : 'Authentication failed',
-          401
-        );
-        
-        response = Response.json({
-          ...errorResponse,
-          timestamp: new Date().toISOString()
-        }, { status: 401 });
-        applyCORSHeaders(request, response, process.env.NODE_ENV as any);
-        return response;
+      } else {
+        const requestType = isConnectivityCheck ? 'connectivity check (HEAD)' : 
+                           isMetadataRequest ? 'metadata request (GET)' : 
+                           `discovery call: ${requestBody?.method || 'unknown'}`;
+        console.log(`🔍 Allowing unauthenticated ${requestType} from ${clientIP}`);
+        // Set anonymous context for discovery calls
+        currentAuthContext = null;
+        currentApiKeyConfig = null;
       }
       
       // Security: Additional request body validation for MCP calls
@@ -1598,6 +1631,7 @@ const securedHandler = createSecuredHandler(handler);
 // Explicit named exports for better compatibility with Vercel
 export const GET = securedHandler;
 export const POST = securedHandler;
+export const HEAD = securedHandler; // Handle connectivity checks
 export const DELETE = securedHandler;
 export const PUT = securedHandler;
 export const OPTIONS = securedHandler; // Handle CORS preflight
