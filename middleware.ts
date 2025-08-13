@@ -11,6 +11,11 @@ export function middleware(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith('/.well-known/')) {
     return NextResponse.next()
   }
+  
+  // Allow OAuth consent page (part of OAuth 2.1 flow)
+  if (request.nextUrl.pathname.startsWith('/auth/consent')) {
+    return NextResponse.next()
+  }
 
   // Check verification status
   const isVerified = request.cookies.get('mcp-verified')?.value === 'true'
