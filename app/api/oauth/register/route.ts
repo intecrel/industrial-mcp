@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     
     // Validate grant_types if provided
     if (registrationRequest.grant_types) {
-      const validGrantTypes = ['authorization_code'];
+      const validGrantTypes = ['authorization_code', 'refresh_token', 'client_credentials'];
       for (const grantType of registrationRequest.grant_types) {
         if (!validGrantTypes.includes(grantType)) {
           return createErrorResponse('invalid_client_metadata', `Unsupported grant_type: ${grantType}`);
