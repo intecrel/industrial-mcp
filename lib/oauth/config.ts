@@ -32,7 +32,7 @@ export const getOAuthConfig = (): OAuthConfig => {
     tokenEndpoint: `${baseUrl}/api/oauth/token`,
     jwksEndpoint: `${baseUrl}/api/oauth/jwks`,
     registrationEndpoint: `${baseUrl}/api/oauth/register`,
-    supportedScopes: ['read:analytics', 'read:knowledge', 'admin:usage'],
+    supportedScopes: ['mcp:tools', 'mcp:resources', 'mcp:prompts'],
     jwtSecret: process.env.OAUTH_JWT_SECRET || 'dev-secret-change-in-production',
     jwtAlgorithm: 'HS256', // Using symmetric for simplicity, can upgrade to RS256 later
     accessTokenTtl: 3600, // 1 hour
