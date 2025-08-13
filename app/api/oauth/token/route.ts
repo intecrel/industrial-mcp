@@ -33,17 +33,22 @@ export async function POST(request: NextRequest) {
     const client_secret = body.client_secret;
     const code_verifier = body.code_verifier;
     
+    console.log(`🔍 Token request: grant_type=${grant_type}, client_id=${client_id}, code=${code?.substring(0, 20)}..., redirect_uri=${redirect_uri}`);
+    
     // Validate grant type
     if (grant_type !== 'authorization_code') {
+      console.log(`❌ Invalid grant_type: ${grant_type}`);
       return createErrorResponse('unsupported_grant_type', 'Only authorization_code grant is supported');
     }
     
     // Validate required parameters
     if (!code) {
+      console.log('❌ Missing code parameter');
       return createErrorResponse('invalid_request', 'Missing code parameter');
     }
     
     if (!client_id) {
+      console.log('❌ Missing client_id parameter');
       return createErrorResponse('invalid_request', 'Missing client_id parameter');
     }
     
@@ -69,7 +74,9 @@ export async function POST(request: NextRequest) {
     let authClaims: TokenClaims;
     try {
       authClaims = await validateToken(code);
+      console.log(`✅ Authorization code decoded: client_id=${authClaims.client_id}, scope=${authClaims.scope}`);
     } catch (error) {
+      console.log(`❌ Authorization code validation failed: ${error instanceof Error ? error.message : 'Invalid authorization code'}`);
       return createErrorResponse('invalid_grant', error instanceof Error ? error.message : 'Invalid authorization code');
     }
     
@@ -80,7 +87,9 @@ export async function POST(request: NextRequest) {
     
     // Verify the authorization code was issued to the requesting client
     // For Claude.ai dynamic registration, the code contains the original dynamic client_id
+    console.log(`🔍 Client ID validation: authClaims.client_id=${authClaims.client_id}, request client_id=${client_id}`);
     if (authClaims.client_id !== client_id) {
+      console.log(`❌ Client ID mismatch: code issued to ${authClaims.client_id}, but request from ${client_id}`);
       return createErrorResponse('invalid_grant', 'Code was not issued to this client');
     }
     
