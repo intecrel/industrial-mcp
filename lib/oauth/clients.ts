@@ -69,7 +69,7 @@ const initializeDefaultClients = () => {
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
     scope: 'mcp:tools mcp:resources mcp:prompts claudeai read:analytics read:knowledge admin:usage',
-    token_endpoint_auth_method: 'client_secret_post', // Matches Claude.ai's registration
+    token_endpoint_auth_method: 'none', // No client secret required for fallback client
     application_type: 'web',
     created_at: Date.now(),
     updated_at: Date.now(),
