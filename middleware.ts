@@ -6,6 +6,11 @@ export function middleware(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith('/api')) {
     return NextResponse.next()
   }
+  
+  // Allow OAuth well-known endpoints (part of OAuth 2.1 standard)
+  if (request.nextUrl.pathname.startsWith('/.well-known/')) {
+    return NextResponse.next()
+  }
 
   // Check verification status
   const isVerified = request.cookies.get('mcp-verified')?.value === 'true'

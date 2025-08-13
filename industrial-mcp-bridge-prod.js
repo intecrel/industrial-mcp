@@ -12,6 +12,7 @@ const CONFIG = {
   MCP_SERVER_URL: process.env.MCP_SERVER_URL || 'http://localhost:3000/api/mcp',
   API_KEY: process.env.MCP_API_KEY || 'your-api-key-here',
   MAC_ADDRESS: process.env.MCP_MAC_ADDRESS || 'your-mac-address',
+  OAUTH_TOKEN: process.env.MCP_OAUTH_TOKEN, // OAuth Bearer token support
   DEBUG: process.env.DEBUG === 'true'
 };
 
@@ -29,6 +30,22 @@ const server = new Server({
   }
 });
 
+// Get authentication headers based on available configuration
+function getAuthHeaders() {
+  if (CONFIG.OAUTH_TOKEN) {
+    // Use OAuth Bearer token if available
+    return {
+      'Authorization': `Bearer ${CONFIG.OAUTH_TOKEN}`
+    };
+  } else {
+    // Fall back to API key + MAC address
+    return {
+      'x-api-key': CONFIG.API_KEY,
+      'x-mac-address': CONFIG.MAC_ADDRESS
+    };
+  }
+}
+
 // Forward tools/list to HTTP MCP server using schema
 server.setRequestHandler(ListToolsRequestSchema, async (request) => {
   try {
@@ -41,8 +58,7 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
         'Connection': 'keep-alive',
-        'x-api-key': CONFIG.API_KEY,
-        'x-mac-address': CONFIG.MAC_ADDRESS
+        ...getAuthHeaders()
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -79,8 +95,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
         'Connection': 'keep-alive',
-        'x-api-key': CONFIG.API_KEY,
-        'x-mac-address': CONFIG.MAC_ADDRESS
+        ...getAuthHeaders()
       },
       body: JSON.stringify({
         jsonrpc: '2.0',

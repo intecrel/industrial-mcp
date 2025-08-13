@@ -3,6 +3,13 @@ import { z } from "zod";
 import { getRequestValidator, validateSqlQuery, validateCypherQuery } from '../../../lib/security/request-validator';
 import { applyCORSHeaders } from '../../../lib/security/cors-config';
 import { NextRequest, NextResponse } from 'next/server';
+import { 
+  authenticateRequest, 
+  hasToolPermission, 
+  getAuthInfo, 
+  createAuthError,
+  AuthContext 
+} from '../../../lib/oauth/auth-middleware';
 
 // Usage tracking interface
 interface UsageEntry {
@@ -193,13 +200,35 @@ const validateRequestSecurity = (request: any, body?: any): void => {
   }
 };
 
-// Simplified tool wrapper that logs usage (authentication handled at route level)
+// Enhanced tool wrapper with dual authentication and scope checking
 const authenticatedTool = (toolName: string, toolFn: (params: any) => Promise<any>) => {
   return async (params: any) => {
     try {
+      // Check if user has permission to access this tool
+      if (currentAuthContext && !hasToolPermission(currentAuthContext, toolName)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                error: `Access denied: ${toolName}`,
+                message: `Insufficient permissions for tool: ${toolName}`,
+                required_scopes: getRequiredScopesForTool(toolName),
+                current_auth: getAuthInfo(currentAuthContext),
+                timestamp: new Date().toISOString(),
+                code: "AUTHORIZATION_ERROR",
+                tool: toolName
+              }, null, 2)
+            }
+          ],
+        };
+      }
+      
       // Log usage for analytics if user is authenticated
       if (currentApiKeyConfig) {
         logUsage(currentApiKeyConfig, toolName, params);
+      } else if (currentAuthContext) {
+        logOAuthUsage(currentAuthContext, toolName, params);
       }
       
       // Execute the tool
@@ -223,6 +252,50 @@ const authenticatedTool = (toolName: string, toolFn: (params: any) => Promise<an
       };
     }
   };
+};
+
+// Helper function to get required scopes for a tool
+const getRequiredScopesForTool = (toolName: string): string[] => {
+  // Map tools to their required scopes based on the OAuth scope definitions
+  const toolScopeMap: Record<string, string[]> = {
+    'query_matomo_database': ['read:analytics'],
+    'get_visitor_analytics': ['read:analytics'],
+    'get_conversion_metrics': ['read:analytics'],
+    'get_content_performance': ['read:analytics'],
+    'get_company_intelligence': ['read:analytics'],
+    'query_knowledge_graph': ['read:knowledge'],
+    'get_organizational_structure': ['read:knowledge'],
+    'find_capability_paths': ['read:knowledge'],
+    'get_knowledge_graph_stats': ['read:knowledge'],
+    'get_usage_analytics': ['admin:usage'],
+    'get_cloud_sql_status': ['admin:usage'],
+    'get_cloud_sql_info': ['admin:usage'],
+    'echo': ['admin:usage']
+  };
+  
+  return toolScopeMap[toolName] || [];
+};
+
+// OAuth usage logging
+const logOAuthUsage = (authContext: AuthContext, toolName: string, params?: any) => {
+  const entry: UsageEntry = {
+    userId: authContext.userId,
+    apiKey: `oauth:${authContext.clientId}` || 'oauth:unknown',
+    toolName,
+    timestamp: Date.now(),
+    params: params ? JSON.stringify(params).substring(0, 200) : undefined,
+    ipAddress: (globalThis as any).currentRequestIP || 'unknown',
+    userAgent: (globalThis as any).currentRequestUserAgent || 'unknown'
+  };
+  
+  usageLog.push(entry);
+  
+  // Keep only last 1000 entries to prevent memory issues
+  if (usageLog.length > 1000) {
+    usageLog.splice(0, usageLog.length - 1000);
+  }
+  
+  console.log(`📊 OAuth Usage logged: ${getAuthInfo(authContext)} used ${toolName}`);
 };
 
 // Simple in-memory cache for performance optimization
@@ -258,8 +331,9 @@ const setCache = (key: string, data: any, ttl: number = 30000) => {
   console.log(`💾 Cached ${key} for ${ttl}ms`);
 };
 
-// Global variable to store current request's API key info (for this serverless instance)
+// Global variable to store current request's authentication info (for this serverless instance)
 let currentApiKeyConfig: ApiKeyConfig | null = null;
+let currentAuthContext: AuthContext | null = null;
 
 /**
  * Industrial MCP Server Handler
@@ -1414,49 +1488,50 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
         return response;
       }
       
-      // Extract and validate API key with enhanced security
-      const apiKey = request.headers.get('x-api-key') || request.headers.get('X-API-Key');
-      
-      // Validate API key with security checks
-      const apiKeys = parseApiKeys();
-      if (apiKeys.length > 0) { // Only validate if API keys are configured
-        if (!apiKey) {
-          response = Response.json({
-            error: "API key required",
-            message: "Please provide x-api-key header",
-            code: "AUTHENTICATION_ERROR",
-            timestamp: new Date().toISOString()
-          }, { status: 401 });
-          applyCORSHeaders(request, response, process.env.NODE_ENV as any);
-          return response;
+      // Dual Authentication: Support both OAuth Bearer tokens and API key authentication
+      try {
+        // Create a minimal NextRequest-compatible object for authentication
+        const requestForAuth = {
+          headers: {
+            get: (name: string) => request.headers.get(name)
+          },
+          url: request.url,
+          method: request.method
+        } as NextRequest;
+        
+        const authContext = await authenticateRequest(requestForAuth);
+        
+        // Store authenticated user info for tools to access
+        currentAuthContext = authContext;
+        
+        // If using MAC address authentication, also populate legacy API key config
+        if (authContext.method === 'mac_address') {
+          // Create compatible API key config for legacy usage logging
+          currentApiKeyConfig = {
+            key: 'mac_address_auth',
+            userId: authContext.userId,
+            name: 'MAC Address Authentication',
+            permissions: authContext.permissions
+          };
+        } else {
+          currentApiKeyConfig = null; // OAuth doesn't use legacy API key config
         }
         
-        // Enhanced API key validation with security checks
-        try {
-          const apiKeyConfig = validateApiKey({
-            'x-api-key': apiKey,
-            'x-forwarded-for': clientIP,
-            'user-agent': userAgent
-          }, request);
-          
-          console.log(`✅ Secure API access: ${apiKeyConfig.name} (${apiKeyConfig.userId}) from ${clientIP}`);
-          
-          // Store authenticated user info for tools to access
-          currentApiKeyConfig = apiKeyConfig;
-        } catch (validationError) {
-          const isRateLimit = validationError instanceof Error && validationError.message.includes('Rate limit');
-          response = Response.json({
-            error: isRateLimit ? "Rate limit exceeded" : "Authentication failed",
-            message: validationError instanceof Error ? validationError.message : "Access denied",
-            code: isRateLimit ? "RATE_LIMIT_ERROR" : "AUTHENTICATION_ERROR",
-            timestamp: new Date().toISOString()
-          }, { status: isRateLimit ? 429 : 401 });
-          applyCORSHeaders(request, response, process.env.NODE_ENV as any);
-          return response;
-        }
-      } else {
-        console.warn('⚠️ No API keys configured - allowing unauthenticated access');
-        currentApiKeyConfig = null;
+        console.log(`✅ Dual authentication success: ${getAuthInfo(authContext)} from ${clientIP}`);
+        
+      } catch (authError) {
+        console.error('❌ Authentication failed:', authError);
+        const errorResponse = createAuthError(
+          authError instanceof Error ? authError.message : 'Authentication failed',
+          401
+        );
+        
+        response = Response.json({
+          ...errorResponse,
+          timestamp: new Date().toISOString()
+        }, { status: 401 });
+        applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+        return response;
       }
       
       // Security: Additional request body validation for MCP calls
@@ -1510,6 +1585,9 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
       // Cleanup request context
       delete (globalThis as any).currentRequestIP;
       delete (globalThis as any).currentRequestUserAgent;
+      // Clear authentication context
+      currentApiKeyConfig = null;
+      currentAuthContext = null;
     }
   };
 };
