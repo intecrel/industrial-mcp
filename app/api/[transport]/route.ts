@@ -1386,11 +1386,11 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
       // Check if this is an MCP discovery call that should be allowed without authentication
       // Claude.ai needs to discover available tools before authentication can complete
       const isDiscoveryCall = requestBody && (
-        // Remove tools/list - it should require authentication to trigger OAuth flow
         requestBody.method === 'ping' ||
         requestBody.method === 'initialize' ||
         requestBody.method === 'capabilities' ||
         requestBody.method === 'server/info' ||
+        requestBody.method === 'tools/list' || // Allow tools/list for discovery, but actual tool calls require auth
         !requestBody.method // Allow metadata requests
       );
       
