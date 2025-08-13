@@ -7,8 +7,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateClient, validateRedirectUri } from '../../../../lib/oauth/clients';
 import { validateScopes } from '../../../../lib/oauth/scopes';
-import { generateAuthorizationCode } from '../../../../lib/oauth/jwt';
 import { isValidCodeChallenge } from '../../../../lib/oauth/pkce';
+
+// Force dynamic rendering for OAuth routes
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +20,7 @@ export async function GET(request: NextRequest) {
     const response_type = searchParams.get('response_type');
     const client_id = searchParams.get('client_id');
     const redirect_uri = searchParams.get('redirect_uri');
-    const scope = searchParams.get('scope') || 'read:analytics read:knowledge';
+    const scope = searchParams.get('scope') || 'mcp:tools mcp:resources mcp:prompts';
     const state = searchParams.get('state');
     const code_challenge = searchParams.get('code_challenge');
     const code_challenge_method = searchParams.get('code_challenge_method') || 'S256';
@@ -64,37 +66,41 @@ export async function GET(request: NextRequest) {
       return createRedirectError(redirect_uri, 'invalid_request', 'Unsupported code_challenge_method', state);
     }
     
-    // For this implementation, we'll auto-approve the authorization
-    // In a real implementation, this would redirect to a consent screen
-    
+    // Redirect to consent screen for user authorization
     try {
-      // Generate authorization code
-      const authCode = await generateAuthorizationCode(
-        client_id,
-        scopeValidation.scopes,
-        redirect_uri,
-        code_challenge || undefined,
-        code_challenge_method || undefined
-      );
+      // Get the base URL for the consent page
+      const baseUrl = process.env.NODE_ENV === 'development'
+        ? 'http://localhost:3000'
+        : 'https://industrial-mcp-delta.vercel.app';
       
-      // Construct redirect URL with authorization code
-      const redirectUrl = new URL(redirect_uri);
-      redirectUrl.searchParams.set('code', authCode);
+      // Construct consent URL with OAuth parameters
+      const consentUrl = new URL(`${baseUrl}/auth/consent`);
+      consentUrl.searchParams.set('client_id', client_id);
+      consentUrl.searchParams.set('client_name', client.client_name);
+      consentUrl.searchParams.set('redirect_uri', redirect_uri);
+      consentUrl.searchParams.set('scope', scope);
       if (state) {
-        redirectUrl.searchParams.set('state', state);
+        consentUrl.searchParams.set('state', state);
+      }
+      if (code_challenge) {
+        consentUrl.searchParams.set('code_challenge', code_challenge);
+      }
+      if (code_challenge_method) {
+        consentUrl.searchParams.set('code_challenge_method', code_challenge_method);
       }
       
-      console.log(`✅ Authorization code issued for client: ${client.client_name}`);
+      console.log(`🔐 Redirecting to consent screen for client: ${client.client_name}`);
+      console.log(`📋 Consent URL: ${consentUrl.toString()}`);
       
-      // Redirect back to client with authorization code
-      return NextResponse.redirect(redirectUrl.toString());
+      // Redirect to consent page
+      return NextResponse.redirect(consentUrl.toString());
       
     } catch (error) {
-      console.error('❌ Error generating authorization code:', error);
+      console.error('❌ Error redirecting to consent screen:', error);
       return createRedirectError(
         redirect_uri, 
         'server_error', 
-        'Failed to generate authorization code',
+        'Failed to redirect to consent screen',
         state || undefined
       );
     }

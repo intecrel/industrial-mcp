@@ -48,7 +48,7 @@ const initializeDefaultClients = () => {
     redirect_uris: ['http://localhost', 'https://localhost'], // Claude Desktop supports localhost
     grant_types: ['authorization_code'],
     response_types: ['code'],
-    scope: 'read:analytics read:knowledge admin:usage',
+    scope: 'mcp:tools mcp:resources mcp:prompts',
     token_endpoint_auth_method: 'none', // Public client
     application_type: 'native',
     created_at: Date.now(),
@@ -68,7 +68,7 @@ const initializeDefaultClients = () => {
     ], // Claude.ai OAuth callbacks including official MCP callback
     grant_types: ['authorization_code', 'client_credentials'],
     response_types: ['code'],
-    scope: 'read:analytics read:knowledge admin:usage',
+    scope: 'mcp:tools mcp:resources mcp:prompts',
     token_endpoint_auth_method: 'none', // Public client for Claude.ai web
     application_type: 'web',
     created_at: Date.now(),

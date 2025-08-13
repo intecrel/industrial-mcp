@@ -10,8 +10,48 @@ export interface ScopeDefinition {
 
 /**
  * Supported OAuth scopes and their tool access mappings
+ * Updated to use MCP standard scopes
  */
 export const SUPPORTED_SCOPES: Record<string, ScopeDefinition> = {
+  'mcp:tools': {
+    description: 'Access to all MCP tools including database queries, analytics, and knowledge graph tools',
+    tools: [
+      'echo',
+      'query_matomo_database',
+      'get_visitor_analytics', 
+      'get_conversion_metrics',
+      'get_content_performance',
+      'get_company_intelligence',
+      'explore_database',
+      'query_database',
+      'analyze_data',
+      'query_knowledge_graph',
+      'get_organizational_structure',
+      'find_capability_paths',
+      'get_knowledge_graph_stats',
+      'get_cloud_sql_status',
+      'get_cloud_sql_info',
+      'get_usage_analytics',
+      'get_unified_dashboard_data',
+      'correlate_operational_relationships'
+    ]
+  },
+  'mcp:resources': {
+    description: 'Access to MCP resources and data connections',
+    tools: [
+      'explore_database',
+      'query_database',
+      'get_cloud_sql_status',
+      'get_cloud_sql_info'
+    ]
+  },
+  'mcp:prompts': {
+    description: 'Access to MCP prompts and query templates',
+    tools: [
+      'echo' // For now, just echo as a basic prompt tool
+    ]
+  },
+  // Keep legacy scopes for backward compatibility
   'read:analytics': {
     description: 'Read access to analytics data and visitor metrics from Matomo database',
     tools: [
@@ -20,9 +60,9 @@ export const SUPPORTED_SCOPES: Record<string, ScopeDefinition> = {
       'get_conversion_metrics',
       'get_content_performance',
       'get_company_intelligence',
-      'explore_database', // For analytics database exploration
-      'query_database', // For analytics database queries
-      'analyze_data', // For analytics data analysis
+      'explore_database',
+      'query_database',
+      'analyze_data',
     ]
   },
   'read:knowledge': {
