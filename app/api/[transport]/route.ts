@@ -2,7 +2,7 @@ import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
 import { getRequestValidator, validateSqlQuery, validateCypherQuery } from '../../../lib/security/request-validator';
 import { applyCORSHeaders } from '../../../lib/security/cors-config';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { 
   authenticateRequest, 
   hasToolPermission, 
@@ -25,8 +25,6 @@ interface UsageEntry {
 // In-memory usage tracking (in production, use a database)
 const usageLog: UsageEntry[] = [];
 
-// Security: Request rate limiting
-const rateLimitStore = new Map<string, number[]>();
 
 // API Key configuration interface
 interface ApiKeyConfig {
@@ -37,60 +35,7 @@ interface ApiKeyConfig {
   rateLimitPerHour?: number;
 }
 
-// Parse API keys from environment variables
-const parseApiKeys = (): ApiKeyConfig[] => {
-  const keys: ApiKeyConfig[] = [];
-  
-  // Primary API key (backward compatibility)
-  const primaryKey = process.env.API_KEY;
-  if (primaryKey) {
-    keys.push({
-      key: primaryKey,
-      userId: 'primary',
-      name: 'Primary API Key',
-      permissions: ['*'] // Full access
-    });
-  }
-  
-  // Multi-user API keys from environment variable
-  // Format: USER1:key1:name1,USER2:key2:name2
-  const multiKeys = process.env.MCP_API_KEYS;
-  if (multiKeys) {
-    multiKeys.split(',').forEach(keyConfig => {
-      const [userId, key, name, rateLimitStr] = keyConfig.trim().split(':');
-      if (userId && key) {
-        keys.push({
-          key: key.trim(),
-          userId: userId.trim(),
-          name: name?.trim() || userId,
-          permissions: ['*'], // Default full access
-          rateLimitPerHour: rateLimitStr ? parseInt(rateLimitStr) : undefined
-        });
-      }
-    });
-  }
-  
-  return keys;
-};
 
-// Get API key configuration
-const getApiKeyConfig = (apiKey: string): ApiKeyConfig | null => {
-  const apiKeys = parseApiKeys();
-  return apiKeys.find(config => config.key === apiKey) || null;
-};
-
-// Rate limiting check
-const checkRateLimit = (apiKeyConfig: ApiKeyConfig): boolean => {
-  if (!apiKeyConfig.rateLimitPerHour) return true;
-  
-  const oneHourAgo = Date.now() - (60 * 60 * 1000);
-  const recentUsage = usageLog.filter(entry => 
-    entry.apiKey === apiKeyConfig.key && 
-    entry.timestamp > oneHourAgo
-  );
-  
-  return recentUsage.length < apiKeyConfig.rateLimitPerHour;
-};
 
 // Log usage for analytics
 const logUsage = (apiKeyConfig: ApiKeyConfig, toolName: string, params?: any) => {
@@ -114,59 +59,9 @@ const logUsage = (apiKeyConfig: ApiKeyConfig, toolName: string, params?: any) =>
   console.log(`📊 Usage logged: ${apiKeyConfig.userId} used ${toolName}`);
 };
 
-// Enhanced API Key validation function with security checks
-const validateApiKey = (headers: any, request?: any): ApiKeyConfig => {
-  const apiKey = headers?.['x-api-key'] || headers?.['X-API-Key'];
-  
-  // Security: Validate request headers and structure
-  if (request) {
-    const requestValidator = getRequestValidator();
-    const validation = requestValidator.validateRequest({
-      method: request.method,
-      headers,
-      url: request.url
-    });
-    
-    if (validation.blocked) {
-      throw new Error(`Request blocked: ${validation.reason}`);
-    }
-    
-    if (!validation.valid) {
-      console.warn('⚠️ Request validation warnings:', validation.errors);
-    }
-  }
-  
-  // Check if any API keys are configured
-  const apiKeys = parseApiKeys();
-  if (apiKeys.length === 0) {
-    console.warn('⚠️ No API keys configured. Set API_KEY or MCP_API_KEYS environment variable.');
-    throw new Error('Server configuration error: No API keys configured');
-  }
-  
-  if (!apiKey) {
-    throw new Error('API key required. Please provide x-api-key header.');
-  }
-  
-  const apiKeyConfig = getApiKeyConfig(apiKey);
-  if (!apiKeyConfig) {
-    throw new Error('Invalid API key provided.');
-  }
-  
-  // Security: Enhanced rate limiting with IP tracking
-  const clientIP = headers?.['x-forwarded-for'] || headers?.['x-real-ip'] || 'unknown';
-  const rateLimitKey = `${apiKeyConfig.userId}:${clientIP}`;
-  
-  if (!checkRateLimit(apiKeyConfig)) {
-    throw new Error(`Rate limit exceeded for user ${apiKeyConfig.userId}. Limit: ${apiKeyConfig.rateLimitPerHour} requests/hour.`);
-  }
-  
-  console.log(`✅ API key validated: ${apiKeyConfig.name} (${apiKeyConfig.userId}) from ${clientIP}`);
-  return apiKeyConfig;
-};
 
 // Security: Query validation wrapper
 const validateAndSanitizeQuery = (query: string, type: 'sql' | 'cypher'): string => {
-  const validator = getRequestValidator();
   const result = type === 'sql' ? validateSqlQuery(query) : validateCypherQuery(query);
   
   if (result.blocked) {
@@ -1472,7 +1367,7 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
         if (request.method === 'POST' && request.headers.get('content-type')?.includes('application/json')) {
           requestBody = await request.clone().json();
         }
-      } catch (e) {
+      } catch {
         // Ignore JSON parsing errors for non-JSON requests
       }
       

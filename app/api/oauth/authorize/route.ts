@@ -7,7 +7,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateClient, validateRedirectUri } from '../../../../lib/oauth/clients';
 import { validateScopes } from '../../../../lib/oauth/scopes';
-import { generateAuthorizationCode } from '../../../../lib/oauth/jwt';
 import { isValidCodeChallenge } from '../../../../lib/oauth/pkce';
 
 export async function GET(request: NextRequest) {

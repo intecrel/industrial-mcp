@@ -5,12 +5,11 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
-interface ConsentPageProps {}
 
-export default function ConsentPage({}: ConsentPageProps) {
+export default function ConsentPage() {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
