@@ -1550,10 +1550,20 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
             401
           );
           
+          // Add WWW-Authenticate header as required by MCP Authorization spec
+          const baseUrl = process.env.NODE_ENV === 'development' 
+            ? 'http://localhost:3000' 
+            : 'https://industrial-mcp-delta.vercel.app';
+          
           response = Response.json({
             ...errorResponse,
             timestamp: new Date().toISOString()
-          }, { status: 401 });
+          }, { 
+            status: 401,
+            headers: {
+              'WWW-Authenticate': `Bearer realm="MCP Server", authorization_uri="${baseUrl}/.well-known/oauth-authorization-server"`
+            }
+          });
           applyCORSHeaders(request, response, process.env.NODE_ENV as any);
           return response;
         }

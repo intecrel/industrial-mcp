@@ -60,11 +60,12 @@ const initializeDefaultClients = () => {
     client_id: 'claude-web',
     client_name: 'Claude.ai Web',
     redirect_uris: [
+      'https://claude.ai/api/mcp/auth_callback', // Official Claude.ai MCP OAuth callback
       'https://claude.ai/oauth/callback',
-      'https://claude.ai/api/organizations/*/mcp/callback',
+      'https://claude.ai/api/organizations/*/mcp/callback', 
       'https://claude.ai/settings/connectors',
       'https://claude.ai/'
-    ], // Multiple possible Claude.ai OAuth callbacks
+    ], // Claude.ai OAuth callbacks including official MCP callback
     grant_types: ['authorization_code', 'client_credentials'],
     response_types: ['code'],
     scope: 'read:analytics read:knowledge admin:usage',
