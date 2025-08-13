@@ -45,22 +45,29 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Validate client
+    // Validate client - with fallback for Claude.ai dynamic registration
     let client;
     try {
       client = validateClient(client_id);
     } catch (error) {
-      console.error('❌ Client validation failed:', error);
-      return createConsentErrorRedirect(
-        redirect_uri,
-        'invalid_client',
-        error instanceof Error ? error.message : 'Invalid client',
-        state
-      );
+      // If dynamic client not found, check if it's Claude.ai and use pre-registered client
+      if (redirect_uri === 'https://claude.ai/api/mcp/auth_callback') {
+        console.log(`🔄 Dynamic client ${client_id} not found in consent handler, using pre-registered claude-web client`);
+        client = validateClient('claude-web');
+      } else {
+        console.error('❌ Client validation failed:', error);
+        return createConsentErrorRedirect(
+          redirect_uri,
+          'invalid_client',
+          error instanceof Error ? error.message : 'Invalid client',
+          state
+        );
+      }
     }
 
-    // Validate redirect URI
-    if (!validateRedirectUri(client_id, redirect_uri)) {
+    // Validate redirect URI (use the actual client we're using, which might be the fallback)
+    const clientIdToCheck = client.client_id;
+    if (!validateRedirectUri(clientIdToCheck, redirect_uri)) {
       return NextResponse.json({
         error: 'invalid_redirect_uri',
         error_description: 'Invalid redirect_uri for this client'
