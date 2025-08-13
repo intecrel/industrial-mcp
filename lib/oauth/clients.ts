@@ -59,11 +59,16 @@ const initializeDefaultClients = () => {
   const claudeWebClient: OAuthClient = {
     client_id: 'claude-web',
     client_name: 'Claude.ai Web',
-    redirect_uris: ['https://claude.ai/oauth/callback'], // Hypothetical Claude.ai OAuth callback
-    grant_types: ['authorization_code'],
+    redirect_uris: [
+      'https://claude.ai/oauth/callback',
+      'https://claude.ai/api/organizations/*/mcp/callback',
+      'https://claude.ai/settings/connectors',
+      'https://claude.ai/'
+    ], // Multiple possible Claude.ai OAuth callbacks
+    grant_types: ['authorization_code', 'client_credentials'],
     response_types: ['code'],
-    scope: 'read:analytics read:knowledge',
-    token_endpoint_auth_method: 'none', // Public client for simplicity
+    scope: 'read:analytics read:knowledge admin:usage',
+    token_endpoint_auth_method: 'none', // Public client for Claude.ai web
     application_type: 'web',
     created_at: Date.now(),
     updated_at: Date.now(),
