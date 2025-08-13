@@ -51,6 +51,30 @@ export const SUPPORTED_SCOPES: Record<string, ScopeDefinition> = {
       'echo' // For now, just echo as a basic prompt tool
     ]
   },
+  // Claude.ai specific scope (used by Stripe and other MCP servers)
+  'claudeai': {
+    description: 'Full access for Claude.ai integration with all MCP capabilities',
+    tools: [
+      'echo',
+      'query_matomo_database',
+      'get_visitor_analytics', 
+      'get_conversion_metrics',
+      'get_content_performance',
+      'get_company_intelligence',
+      'explore_database',
+      'query_database',
+      'analyze_data',
+      'query_knowledge_graph',
+      'get_organizational_structure',
+      'find_capability_paths',
+      'get_knowledge_graph_stats',
+      'get_cloud_sql_status',
+      'get_cloud_sql_info',
+      'get_usage_analytics',
+      'get_unified_dashboard_data',
+      'correlate_operational_relationships'
+    ]
+  },
   // Keep legacy scopes for backward compatibility
   'read:analytics': {
     description: 'Read access to analytics data and visitor metrics from Matomo database',
