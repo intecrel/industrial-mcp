@@ -47,12 +47,22 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('invalid_request', 'Missing client_id parameter');
     }
     
-    // Authenticate client
+    // Authenticate client - with fallback for Claude.ai dynamic registration
     let client;
     try {
       client = authenticateClient(client_id, client_secret);
     } catch (error) {
-      return createErrorResponse('invalid_client', error instanceof Error ? error.message : 'Client authentication failed');
+      // If dynamic client not found, check if it's Claude.ai and use pre-registered client
+      if (redirect_uri === 'https://claude.ai/api/mcp/auth_callback') {
+        console.log(`🔄 Dynamic client ${client_id} not found in token endpoint, using pre-registered claude-web client`);
+        try {
+          client = authenticateClient('claude-web', client_secret);
+        } catch (fallbackError) {
+          return createErrorResponse('invalid_client', fallbackError instanceof Error ? fallbackError.message : 'Client authentication failed');
+        }
+      } else {
+        return createErrorResponse('invalid_client', error instanceof Error ? error.message : 'Client authentication failed');
+      }
     }
     
     // Validate and decode authorization code
@@ -68,6 +78,8 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('invalid_grant', 'Invalid code type');
     }
     
+    // Verify the authorization code was issued to the requesting client
+    // For Claude.ai dynamic registration, the code contains the original dynamic client_id
     if (authClaims.client_id !== client_id) {
       return createErrorResponse('invalid_grant', 'Code was not issued to this client');
     }
@@ -101,8 +113,8 @@ export async function POST(request: NextRequest) {
     }
     
     try {
-      // Generate access token
-      const tokenResponse = await generateAccessToken(client_id, scopeValidation.scopes);
+      // Generate access token using the authenticated client's ID
+      const tokenResponse = await generateAccessToken(client.client_id, scopeValidation.scopes);
       
       console.log(`✅ Access token issued for client: ${client.client_name} with scopes: ${scopeValidation.scopes.join(' ')}`);
       
