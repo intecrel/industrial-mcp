@@ -1390,7 +1390,10 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
         requestBody.method === 'initialize' ||
         requestBody.method === 'capabilities' ||
         requestBody.method === 'server/info' ||
-        // Remove tools/list - it should require authentication to trigger Connect button
+        // TEMPORARY: Allow listing calls to debug authentication issue
+        requestBody.method === 'tools/list' ||
+        requestBody.method === 'resources/list' ||
+        requestBody.method === 'prompts/list' ||
         !requestBody.method // Allow metadata requests
       );
       
@@ -1404,6 +1407,22 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
       // Allow discovery calls, metadata requests, and connectivity checks without authentication for Claude.ai compatibility
       if (!isDiscoveryCall && !isMetadataRequest && !isConnectivityCheck) {
         console.log(`🔐 MCP request requires authentication: ${request.method} ${requestBody?.method || 'no-method'}`);
+        
+        // ENHANCED LOGGING: Log ALL headers for claude.ai debugging
+        console.log('📋 === CLAUDE.AI HEADERS DEBUG ===');
+        const headerEntries = Array.from(request.headers.entries());
+        headerEntries.forEach(([key, value]) => {
+          // Log sensitive headers with partial masking
+          if (key.toLowerCase() === 'authorization') {
+            console.log(`🔑 ${key}: ${value.substring(0, 20)}...`);
+          } else if (key.toLowerCase().includes('token') || key.toLowerCase().includes('key')) {
+            console.log(`🔐 ${key}: ${value.substring(0, 10)}...`);
+          } else {
+            console.log(`📝 ${key}: ${value}`);
+          }
+        });
+        console.log('📋 === END HEADERS DEBUG ===');
+        
         try {
           // Create a minimal NextRequest-compatible object for authentication
           const requestForAuth = {
@@ -1466,6 +1485,14 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
                            isMetadataRequest ? 'metadata request (GET)' : 
                            `discovery call: ${requestBody?.method || 'unknown'}`;
         console.log(`🔍 Allowing unauthenticated ${requestType} from ${clientIP}`);
+        
+        // TEMPORARY: For debugging, log if listing calls have auth headers but we're allowing them anyway
+        if (requestBody && (requestBody.method === 'tools/list' || requestBody.method === 'resources/list' || requestBody.method === 'prompts/list')) {
+          const authHeader = request.headers.get('authorization');
+          const apiKey = request.headers.get('x-api-key');
+          console.log(`🔧 DEBUG: ${requestBody.method} - Auth header present: ${authHeader ? 'YES' : 'NO'}, API key: ${apiKey ? 'YES' : 'NO'}`);
+        }
+        
         // Set anonymous context for discovery calls
         currentAuthContext = null;
         currentApiKeyConfig = null;
