@@ -11,9 +11,11 @@ import { validateToken, generateAccessToken, TokenClaims } from '../../../../lib
 import { verifyPkceChallenge, isValidCodeVerifier } from '../../../../lib/oauth/pkce';
 
 export async function POST(request: NextRequest) {
+  console.log('🔥 Token endpoint called');
   try {
     // Parse form data or JSON body
     const contentType = request.headers.get('content-type') || '';
+    console.log(`🔥 Content-Type: ${contentType}`);
     let body: Record<string, string>;
     
     if (contentType.includes('application/x-www-form-urlencoded')) {
@@ -85,11 +87,11 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('invalid_grant', 'Invalid code type');
     }
     
-    // Verify the authorization code was issued to the requesting client
-    // For Claude.ai dynamic registration, the code contains the original dynamic client_id
-    console.log(`🔍 Client ID validation: authClaims.client_id=${authClaims.client_id}, request client_id=${client_id}`);
-    if (authClaims.client_id !== client_id) {
-      console.log(`❌ Client ID mismatch: code issued to ${authClaims.client_id}, but request from ${client_id}`);
+    // Verify the authorization code was issued to the authenticated client
+    // For Claude.ai dynamic registration, the code contains the fallback client_id
+    console.log(`🔍 Client ID validation: authClaims.client_id=${authClaims.client_id}, authenticated client_id=${client.client_id}`);
+    if (authClaims.client_id !== client.client_id) {
+      console.log(`❌ Client ID mismatch: code issued to ${authClaims.client_id}, but authenticated as ${client.client_id}`);
       return createErrorResponse('invalid_grant', 'Code was not issued to this client');
     }
     
@@ -122,8 +124,9 @@ export async function POST(request: NextRequest) {
     }
     
     try {
-      // Generate access token using the authenticated client's ID
-      const tokenResponse = await generateAccessToken(client.client_id, scopeValidation.scopes);
+      // Generate access token using the original client_id from the authorization code
+      // This ensures Claude.ai gets a token for the client_id it originally used
+      const tokenResponse = await generateAccessToken(authClaims.client_id, scopeValidation.scopes);
       
       console.log(`✅ Access token issued for client: ${client.client_name} with scopes: ${scopeValidation.scopes.join(' ')}`);
       
