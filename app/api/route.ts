@@ -22,6 +22,45 @@ export async function GET(request: NextRequest) {
     console.log('🤖 Claude.ai MCP discovery detected');
   }
   
+  // Check if this request has authorization header (Bearer token from OAuth)
+  const authHeader = request.headers.get('authorization');
+  const hasBearer = authHeader && authHeader.startsWith('Bearer ');
+  
+  console.log(`🔍 Root discovery - Auth header: ${hasBearer ? 'Bearer token present' : 'No Bearer token'}`);
+  
+  // If Claude.ai has completed OAuth (has Bearer token), redirect to MCP endpoint
+  if (hasBearer && isClaudeAI) {
+    console.log('🔄 Claude.ai has Bearer token - redirecting to MCP endpoint');
+    
+    // Return MCP protocol response that tells Claude.ai to use Bearer auth at /api/mcp
+    return NextResponse.json({
+      jsonrpc: "2.0",
+      result: {
+        protocolVersion: "2025-03-26",
+        capabilities: {
+          tools: {},
+          resources: {},
+          prompts: {}
+        },
+        serverInfo: {
+          name: "Industrial MCP Server",
+          version: "2.0.0"
+        },
+        // CRITICAL: Tell Claude.ai where to make authenticated MCP calls
+        _mcp_endpoint_redirect: `${baseUrl}/api/mcp`,
+        _authentication_method: "bearer_token",
+        _instructions: "Use Bearer token from OAuth at /api/mcp endpoint"
+      }
+    }, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Location': `${baseUrl}/api/mcp` // HTTP redirect header
+      }
+    });
+  }
+  
   // Provide comprehensive MCP server discovery information
   const mcpDiscovery = {
     // MCP Protocol information
@@ -34,7 +73,10 @@ export async function GET(request: NextRequest) {
       oauth2: {
         enabled: true,
         authorization_endpoint: `${baseUrl}/.well-known/oauth-authorization-server`,
-        protected_resource_metadata: `${baseUrl}/.well-known/oauth-protected-resource`
+        protected_resource_metadata: `${baseUrl}/.well-known/oauth-protected-resource`,
+        // IMPORTANT: Tell Claude.ai to use Bearer token after OAuth
+        requires_bearer_token: true,
+        bearer_token_endpoint: `${baseUrl}/api/mcp`
       },
       // Also support legacy API key method
       api_key: {
@@ -96,34 +138,69 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   // Handle POST requests that might be MCP calls to the root
-  console.log('🔄 POST request to root - redirecting to MCP endpoint');
+  console.log('🔄 POST request to root - checking if this is MCP call');
+  
+  const baseUrl = request.nextUrl.origin;
+  const authHeader = request.headers.get('authorization');
+  const hasBearer = authHeader && authHeader.startsWith('Bearer ');
+  
+  console.log(`📋 POST to root - Bearer token: ${hasBearer ? 'present' : 'missing'}`);
   
   // Check if this is an MCP request body
   try {
     const body = await request.json();
     if (body && body.jsonrpc === "2.0") {
       console.log(`📡 MCP JSON-RPC call detected: ${body.method || 'unknown method'}`);
-      console.log('🔀 Suggesting client use /api/mcp endpoint directly');
       
-      return NextResponse.json({
-        jsonrpc: "2.0",
-        id: body.id,
-        error: {
-          code: -32000,
-          message: "MCP endpoint moved",
-          data: {
-            suggestion: "Use /api/mcp endpoint for MCP calls",
-            mcp_endpoint: `${request.nextUrl.origin}/api/mcp`,
-            authentication: "Bearer token from OAuth flow"
+      if (hasBearer) {
+        console.log('🔄 Redirecting authenticated MCP call to /api/mcp');
+        
+        // Forward the request to the actual MCP endpoint with the Bearer token
+        const mcpResponse = await fetch(`${baseUrl}/api/mcp`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authHeader,
+            'User-Agent': request.headers.get('user-agent') || 'MCP-Proxy'
+          },
+          body: JSON.stringify(body)
+        });
+        
+        const responseData = await mcpResponse.json();
+        console.log(`✅ Proxied MCP call: ${body.method} - Status: ${mcpResponse.status}`);
+        
+        return NextResponse.json(responseData, {
+          status: mcpResponse.status,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
           }
-        }
-      }, {
-        status: 200, // Don't return error status, just redirect in MCP response
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      });
+        });
+      } else {
+        console.log('❌ MCP call without Bearer token - redirecting to auth');
+        
+        return NextResponse.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          error: {
+            code: -32000,
+            message: "Authentication required",
+            data: {
+              suggestion: "Complete OAuth flow first, then use Bearer token",
+              oauth_endpoint: `${baseUrl}/.well-known/oauth-authorization-server`,
+              mcp_endpoint: `${baseUrl}/api/mcp`,
+              error_details: "MCP calls require Bearer token from OAuth flow"
+            }
+          }
+        }, {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'WWW-Authenticate': `Bearer realm="MCP Server", authorization_uri="${baseUrl}/api/oauth/authorize"`
+          }
+        });
+      }
     }
   } catch (error) {
     console.log('📝 Non-JSON POST request to root');
