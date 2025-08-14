@@ -1403,6 +1403,7 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
       // Dual Authentication: Support both OAuth Bearer tokens and API key authentication
       // Allow discovery calls, metadata requests, and connectivity checks without authentication for Claude.ai compatibility
       if (!isDiscoveryCall && !isMetadataRequest && !isConnectivityCheck) {
+        console.log(`🔐 MCP request requires authentication: ${request.method} ${requestBody?.method || 'no-method'}`);
         try {
           // Create a minimal NextRequest-compatible object for authentication
           const requestForAuth = {
@@ -1412,6 +1413,9 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
             url: request.url,
             method: request.method
           } as NextRequest;
+          
+          const authHeader = request.headers.get('authorization');
+          console.log(`🔍 Auth header present: ${authHeader ? 'YES' : 'NO'} ${authHeader ? `(${authHeader.substring(0, 20)}...)` : ''}`);
           
           const authContext = await authenticateRequest(requestForAuth);
           
