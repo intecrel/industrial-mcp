@@ -67,7 +67,12 @@ export class CORSManager {
             'Content-Type',
             'Authorization',
             'x-api-key',
-            'Accept'
+            'x-mac-address',
+            'Accept',
+            'Origin',
+            'X-Requested-With',
+            'mcp-protocol-version',  // Claude.ai sends this header
+            'traceparent'  // Claude.ai sends tracing headers
           ],
           credentials: false, // More secure for production
           maxAge: 3600, // 1 hour
