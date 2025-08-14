@@ -1404,6 +1404,22 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
       // Allow discovery calls, metadata requests, and connectivity checks without authentication for Claude.ai compatibility
       if (!isDiscoveryCall && !isMetadataRequest && !isConnectivityCheck) {
         console.log(`🔐 MCP request requires authentication: ${request.method} ${requestBody?.method || 'no-method'}`);
+        
+        // ENHANCED LOGGING: Log ALL headers for claude.ai debugging
+        console.log('📋 === CLAUDE.AI HEADERS DEBUG ===');
+        const headerEntries = Array.from(request.headers.entries());
+        headerEntries.forEach(([key, value]) => {
+          // Log sensitive headers with partial masking
+          if (key.toLowerCase() === 'authorization') {
+            console.log(`🔑 ${key}: ${value.substring(0, 20)}...`);
+          } else if (key.toLowerCase().includes('token') || key.toLowerCase().includes('key')) {
+            console.log(`🔐 ${key}: ${value.substring(0, 10)}...`);
+          } else {
+            console.log(`📝 ${key}: ${value}`);
+          }
+        });
+        console.log('📋 === END HEADERS DEBUG ===');
+        
         try {
           // Create a minimal NextRequest-compatible object for authentication
           const requestForAuth = {
