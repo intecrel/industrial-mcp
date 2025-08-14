@@ -18,9 +18,9 @@ export async function GET() {
       // Authorization server that protects this resource
       authorization_servers: [config.issuer],
       
-      // MCP server URL (Claude.ai connects to base URL)
-      server_url: config.issuer,
-      mcp_server: config.issuer,
+      // MCP server URL (Claude.ai needs the actual MCP endpoint)
+      server_url: `${config.issuer}/api/mcp`,
+      mcp_server: `${config.issuer}/api/mcp`,
       
       // Transport endpoints
       transport_endpoints: [
