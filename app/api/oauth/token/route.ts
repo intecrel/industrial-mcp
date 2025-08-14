@@ -87,11 +87,16 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('invalid_grant', 'Invalid code type');
     }
     
-    // Verify the authorization code was issued to the authenticated client
-    // For Claude.ai dynamic registration, the code contains the fallback client_id
-    console.log(`🔍 Client ID validation: authClaims.client_id=${authClaims.client_id}, authenticated client_id=${client.client_id}`);
-    if (authClaims.client_id !== client.client_id) {
-      console.log(`❌ Client ID mismatch: code issued to ${authClaims.client_id}, but authenticated as ${client.client_id}`);
+    // Verify the authorization code was issued to the requesting client or fallback client
+    // For Claude.ai dynamic registration, allow either the original dynamic client_id or fallback client_id
+    console.log(`🔍 Client ID validation: authClaims.client_id=${authClaims.client_id}, request client_id=${client_id}, authenticated client_id=${client.client_id}`);
+    
+    const isValidClientId = authClaims.client_id === client_id || 
+                           authClaims.client_id === client.client_id ||
+                           (redirect_uri === 'https://claude.ai/api/mcp/auth_callback' && client.client_id === 'claude-web');
+    
+    if (!isValidClientId) {
+      console.log(`❌ Client ID mismatch: code issued to ${authClaims.client_id}, request from ${client_id}, authenticated as ${client.client_id}`);
       return createErrorResponse('invalid_grant', 'Code was not issued to this client');
     }
     
@@ -124,9 +129,8 @@ export async function POST(request: NextRequest) {
     }
     
     try {
-      // Generate access token using the original client_id from the authorization code
-      // This ensures Claude.ai gets a token for the client_id it originally used
-      const tokenResponse = await generateAccessToken(authClaims.client_id, scopeValidation.scopes);
+      // Generate access token using the authenticated client's ID
+      const tokenResponse = await generateAccessToken(client.client_id, scopeValidation.scopes);
       
       console.log(`✅ Access token issued for client: ${client.client_name} with scopes: ${scopeValidation.scopes.join(' ')}`);
       
