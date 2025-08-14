@@ -1390,7 +1390,10 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
         requestBody.method === 'initialize' ||
         requestBody.method === 'capabilities' ||
         requestBody.method === 'server/info' ||
-        // Remove tools/list - it should require authentication to trigger Connect button
+        // TEMPORARY: Allow listing calls to debug authentication issue
+        requestBody.method === 'tools/list' ||
+        requestBody.method === 'resources/list' ||
+        requestBody.method === 'prompts/list' ||
         !requestBody.method // Allow metadata requests
       );
       
@@ -1482,6 +1485,14 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
                            isMetadataRequest ? 'metadata request (GET)' : 
                            `discovery call: ${requestBody?.method || 'unknown'}`;
         console.log(`🔍 Allowing unauthenticated ${requestType} from ${clientIP}`);
+        
+        // TEMPORARY: For debugging, log if listing calls have auth headers but we're allowing them anyway
+        if (requestBody && (requestBody.method === 'tools/list' || requestBody.method === 'resources/list' || requestBody.method === 'prompts/list')) {
+          const authHeader = request.headers.get('authorization');
+          const apiKey = request.headers.get('x-api-key');
+          console.log(`🔧 DEBUG: ${requestBody.method} - Auth header present: ${authHeader ? 'YES' : 'NO'}, API key: ${apiKey ? 'YES' : 'NO'}`);
+        }
+        
         // Set anonymous context for discovery calls
         currentAuthContext = null;
         currentApiKeyConfig = null;
