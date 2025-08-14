@@ -18,16 +18,17 @@ export async function GET() {
       // Authorization server that protects this resource
       authorization_servers: [config.issuer],
       
-      // MCP server URL (Claude.ai needs the actual MCP endpoint)
-      server_url: `${config.issuer}/api/mcp`,
-      mcp_server: `${config.issuer}/api/mcp`,
+      // MCP server URL (Point Claude.ai to root for OAuth Bearer token proxy)
+      server_url: `${config.issuer}/api`,
+      mcp_server: `${config.issuer}/api`,
       
       // Transport endpoints
       transport_endpoints: [
         {
           type: "http", 
-          url: `${config.issuer}/api/mcp`,
-          methods: ["POST"]
+          url: `${config.issuer}/api`,
+          methods: ["POST", "GET"],
+          description: "OAuth Bearer token proxy - forwards to /api/mcp with authentication"
         },
         {
           type: "sse",

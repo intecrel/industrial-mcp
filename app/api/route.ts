@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { applyCORSHeaders } from '../../lib/security/cors-config';
 
 export async function GET(request: NextRequest) {
   const baseUrl = request.nextUrl.origin;
@@ -124,16 +125,17 @@ export async function GET(request: NextRequest) {
     timestamp: new Date().toISOString()
   };
   
-  return NextResponse.json(mcpDiscovery, {
+  const response = NextResponse.json(mcpDiscovery, {
     status: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type, x-api-key, x-mac-address',
       'Cache-Control': 'public, max-age=300' // Cache for 5 minutes
     }
   });
+
+  // Apply proper CORS headers
+  applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+  return response;
 }
 
 export async function POST(request: NextRequest) {
@@ -169,17 +171,18 @@ export async function POST(request: NextRequest) {
         const responseData = await mcpResponse.json();
         console.log(`✅ Proxied MCP call: ${body.method} - Status: ${mcpResponse.status}`);
         
-        return NextResponse.json(responseData, {
+        const response = NextResponse.json(responseData, {
           status: mcpResponse.status,
           headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Content-Type': 'application/json'
           }
         });
+        applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+        return response;
       } else {
         console.log('❌ MCP call without Bearer token - redirecting to auth');
         
-        return NextResponse.json({
+        const response = NextResponse.json({
           jsonrpc: "2.0",
           id: body.id,
           error: {
@@ -196,10 +199,11 @@ export async function POST(request: NextRequest) {
           status: 401,
           headers: {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
             'WWW-Authenticate': `Bearer realm="MCP Server", authorization_uri="${baseUrl}/api/oauth/authorize"`
           }
         });
+        applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+        return response;
       }
     }
   } catch (error) {
@@ -207,25 +211,23 @@ export async function POST(request: NextRequest) {
   }
   
   // Fallback for non-MCP POST requests
-  return NextResponse.json({
+  const response = NextResponse.json({
     message: "Use GET for MCP discovery or POST to /api/mcp for MCP calls"
   }, {
     status: 405,
     headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
+      'Content-Type': 'application/json'
     }
   });
+  applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+  return response;
 }
 
 export async function OPTIONS(request: NextRequest) {
-  return new Response(null, {
+  const response = new Response(null, {
     status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type, x-api-key, x-mac-address',
-      'Access-Control-Max-Age': '86400'
-    }
+    headers: {}
   });
+  applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+  return response;
 }
