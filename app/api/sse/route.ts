@@ -15,43 +15,36 @@ export async function GET(request: NextRequest) {
   const macAddress = searchParams.get('mac_address');
   
   try {
-    // Create a request object with proper headers for authentication
-    const authHeaders = new Headers(request.headers);
+    // DISABLED: Authentication for Claude.ai SSE compatibility
+    // Allow SSE connections without authentication for Claude.ai integration
+    console.log(`🔓 SSE request allowed without authentication from ${request.headers.get('x-forwarded-for') || 'unknown'}`);
     
-    if (token) {
-      authHeaders.set('authorization', `Bearer ${token}`);
-    } else if (apiKey && macAddress) {
-      authHeaders.set('x-api-key', apiKey);
-      authHeaders.set('x-mac-address', macAddress);
-    }
-    
-    const authRequest = new NextRequest(request.url, {
-      method: request.method,
-      headers: authHeaders,
-    });
-
-    // Authenticate the request
-    let authContext;
+    // Optional: Try to get auth context if available, but don't require it
+    let authContext = null;
     try {
-      authContext = await authenticateRequest(authRequest);
-      console.log(`✅ SSE auth success: ${getAuthInfo(authContext)}`);
+      const authHeaders = new Headers(request.headers);
+      
+      if (token) {
+        authHeaders.set('authorization', `Bearer ${token}`);
+      } else if (apiKey && macAddress) {
+        authHeaders.set('x-api-key', apiKey);
+        authHeaders.set('x-mac-address', macAddress);
+      }
+      
+      if (token || (apiKey && macAddress)) {
+        const authRequest = new NextRequest(request.url, {
+          method: request.method,
+          headers: authHeaders,
+        });
+        
+        authContext = await authenticateRequest(authRequest);
+        console.log(`✅ Optional SSE auth success: ${getAuthInfo(authContext)}`);
+      } else {
+        console.log(`🔓 No SSE authentication provided - proceeding with anonymous access`);
+      }
     } catch (authError) {
-      console.error('❌ SSE authentication failed:', authError);
-      return new Response(
-        `event: error\ndata: ${JSON.stringify({
-          error: "authentication_failed",
-          message: authError instanceof Error ? authError.message : "Authentication required"
-        })}\n\n`,
-        {
-          status: 401,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*'
-          }
-        }
-      );
+      // Don't fail the request, just log and proceed anonymously
+      console.log(`⚠️ Optional SSE authentication failed, proceeding anonymously: ${authError instanceof Error ? authError.message : String(authError)}`);
     }
 
     // Create SSE response stream
@@ -62,8 +55,8 @@ export async function GET(request: NextRequest) {
           status: "connected",
           server: "Industrial MCP Server",
           transport: "sse",
-          auth_method: authContext.method,
-          user_id: authContext.userId,
+          auth_method: authContext?.method || "anonymous",
+          user_id: authContext?.userId || "anonymous",
           timestamp: new Date().toISOString()
         })}\n\n`;
         
@@ -75,9 +68,9 @@ export async function GET(request: NextRequest) {
           message: "MCP tools are available via POST requests",
           endpoint: `${request.nextUrl.origin}/api/mcp`,
           supported_methods: ["tools/list", "tools/call"],
-          authentication: authContext.method,
-          scopes: authContext.scopes || [],
-          permissions: authContext.permissions
+          authentication: authContext?.method || "anonymous",
+          scopes: authContext?.scopes || [],
+          permissions: authContext?.permissions || []
         })}\n\n`;
         
         controller.enqueue(new TextEncoder().encode(toolsEvent));
@@ -120,9 +113,9 @@ export async function GET(request: NextRequest) {
             transports: ["HTTP", "SSE", "Stdio"]
           },
           client_info: {
-            user_id: authContext.userId,
-            auth_method: authContext.method,
-            permissions: authContext.permissions,
+            user_id: authContext?.userId || "anonymous",
+            auth_method: authContext?.method || "anonymous",
+            permissions: authContext?.permissions || [],
             connected_at: new Date().toISOString()
           }
         })}\n\n`;
