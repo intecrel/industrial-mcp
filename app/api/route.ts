@@ -154,57 +154,39 @@ export async function POST(request: NextRequest) {
     if (body && body.jsonrpc === "2.0") {
       console.log(`📡 MCP JSON-RPC call detected: ${body.method || 'unknown method'}`);
       
+      // DISABLED: Bearer token requirement for Claude.ai compatibility
+      // Forward both authenticated and unauthenticated requests to /api/mcp
+      console.log(`🔄 Forwarding MCP call to /api/mcp (auth: ${hasBearer ? 'Bearer token' : 'anonymous'})`);
+      
+      // Forward the request to the actual MCP endpoint
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'User-Agent': request.headers.get('user-agent') || 'MCP-Proxy'
+      };
+      
+      // Include Bearer token if present (optional)
       if (hasBearer) {
-        console.log('🔄 Redirecting authenticated MCP call to /api/mcp');
-        
-        // Forward the request to the actual MCP endpoint with the Bearer token
-        const mcpResponse = await fetch(`${baseUrl}/api/mcp`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': authHeader,
-            'User-Agent': request.headers.get('user-agent') || 'MCP-Proxy'
-          },
-          body: JSON.stringify(body)
-        });
-        
-        const responseData = await mcpResponse.json();
-        console.log(`✅ Proxied MCP call: ${body.method} - Status: ${mcpResponse.status}`);
-        
-        const response = NextResponse.json(responseData, {
-          status: mcpResponse.status,
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
-        applyCORSHeaders(request, response, process.env.NODE_ENV as any);
-        return response;
-      } else {
-        console.log('❌ MCP call without Bearer token - redirecting to auth');
-        
-        const response = NextResponse.json({
-          jsonrpc: "2.0",
-          id: body.id,
-          error: {
-            code: -32000,
-            message: "Authentication required",
-            data: {
-              suggestion: "Complete OAuth flow first, then use Bearer token",
-              oauth_endpoint: `${baseUrl}/.well-known/oauth-authorization-server`,
-              mcp_endpoint: `${baseUrl}/api/mcp`,
-              error_details: "MCP calls require Bearer token from OAuth flow"
-            }
-          }
-        }, {
-          status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-            'WWW-Authenticate': `Bearer realm="MCP Server", authorization_uri="${baseUrl}/api/oauth/authorize"`
-          }
-        });
-        applyCORSHeaders(request, response, process.env.NODE_ENV as any);
-        return response;
+        headers['Authorization'] = authHeader;
       }
+      
+      const mcpResponse = await fetch(`${baseUrl}/api/mcp`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      });
+      
+      const responseData = await mcpResponse.text(); // Use text() for SSE responses
+      console.log(`✅ Proxied MCP call: ${body.method} - Status: ${mcpResponse.status}`);
+      
+      const response = new Response(responseData, {
+        status: mcpResponse.status,
+        headers: {
+          'Content-Type': mcpResponse.headers.get('Content-Type') || 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
+      applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+      return response;
     }
   } catch (error) {
     console.log('📝 Non-JSON POST request to root');
