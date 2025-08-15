@@ -53,7 +53,13 @@ const createSimpleWrapper = (originalHandler: (request: Request, context?: any) 
       // Log response details for debugging
       const responseText = await response.clone().text();
       console.log(`📄 Echo-simple response body: ${responseText}`);
-      console.log(`📊 Echo-simple response headers:`, [...response.headers.entries()]);
+      
+      // Log headers in a TypeScript-compatible way
+      const headersList: string[] = [];
+      response.headers.forEach((value, key) => {
+        headersList.push(`${key}: ${value}`);
+      });
+      console.log(`📊 Echo-simple response headers:`, headersList);
       
       // Add CORS headers to response
       response.headers.set('Access-Control-Allow-Origin', '*');
