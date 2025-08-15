@@ -158,9 +158,10 @@ export async function POST(request: NextRequest) {
       // Forward both authenticated and unauthenticated requests to /api/mcp
       console.log(`🔄 Forwarding MCP call to /api/mcp (auth: ${hasBearer ? 'Bearer token' : 'anonymous'})`);
       
-      // Forward the request to the actual MCP endpoint
+      // Forward the request to the actual MCP endpoint with all necessary headers
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
+        'Accept': request.headers.get('accept') || 'application/json, text/event-stream',
         'User-Agent': request.headers.get('user-agent') || 'MCP-Proxy'
       };
       
