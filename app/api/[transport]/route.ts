@@ -1,4 +1,4 @@
-import { createMcpHandler } from "@vercel/mcp-adapter";
+import { createMcpHandler, withMcpAuth } from "@vercel/mcp-adapter";
 import { z } from "zod";
 import { getRequestValidator, validateSqlQuery, validateCypherQuery } from '../../../lib/security/request-validator';
 import { applyCORSHeaders } from '../../../lib/security/cors-config';
@@ -8,7 +8,10 @@ import {
   hasToolPermission, 
   getAuthInfo, 
   createAuthError,
-  AuthContext 
+  AuthContext,
+  detectAuthMethod,
+  authenticateOAuth,
+  authenticateMacAddress
 } from '../../../lib/oauth/auth-middleware';
 
 // Usage tracking interface
@@ -95,21 +98,113 @@ const validateRequestSecurity = (request: any, body?: any): void => {
   }
 };
 
-// UPDATED: Tool wrapper with optional authentication for Claude.ai compatibility
+// Tool scope requirements - maps tool names to required scopes
+const TOOL_SCOPE_REQUIREMENTS: Record<string, string[]> = {
+  // Public tools - no authentication required
+  "echo": [],
+  
+  // Database exploration - requires database read access
+  "explore_database": ["read:database"],
+  "query_database": ["read:database"], 
+  "analyze_data": ["read:database"],
+  "get_cloud_sql_status": ["read:database"],
+  "get_cloud_sql_info": ["read:database"],
+  
+  // Knowledge graph - requires knowledge access
+  "query_knowledge_graph": ["read:knowledge"],
+  "get_organizational_structure": ["read:knowledge"],
+  "find_capability_paths": ["read:knowledge"], 
+  "get_knowledge_graph_stats": ["read:knowledge"],
+  
+  // Analytics - requires analytics access
+  "query_matomo_database": ["read:analytics"],
+  "get_visitor_analytics": ["read:analytics"],
+  "get_conversion_metrics": ["read:analytics"],
+  "get_content_performance": ["read:analytics"],
+  "get_company_intelligence": ["read:analytics"],
+  
+  // Admin tools - requires admin access
+  "get_usage_analytics": ["read:admin"],
+  
+  // Cross-database tools - require multiple scopes
+  "get_unified_dashboard_data": ["read:analytics", "read:knowledge"],
+  "correlate_operational_relationships": ["read:analytics", "read:knowledge"]
+};
+
+// Check if user has required scopes for a tool
+const hasRequiredScopes = (userScopes: string[], requiredScopes: string[]): boolean => {
+  // If no scopes required, allow access
+  if (requiredScopes.length === 0) {
+    return true;
+  }
+  
+  // Check if user has 'read:all' scope (admin access)
+  if (userScopes.includes('read:all')) {
+    return true;
+  }
+  
+  // Check if user has all required scopes
+  return requiredScopes.every(scope => userScopes.includes(scope));
+};
+
+// Get user scopes from current authentication context
+const getCurrentUserScopes = (): string[] => {
+  if (currentAuthContext) {
+    if (currentAuthContext.method === 'oauth') {
+      return currentAuthContext.scopes || [];
+    } else if (currentAuthContext.method === 'mac_address') {
+      // MAC address authentication gets full access
+      return ['read:all'];
+    }
+  }
+  
+  // No authentication - no scopes
+  return [];
+};
+
+// UPDATED: Tool wrapper with proper scope-based access control
 const authenticatedTool = (toolName: string, toolFn: (params: any) => Promise<any>) => {
   return async (params: any) => {
     try {
-      // DISABLED: Permission checks for Claude.ai compatibility
-      // Claude.ai should have access to all tools after OAuth flow completion
+      const requiredScopes = TOOL_SCOPE_REQUIREMENTS[toolName] || [];
+      const userScopes = getCurrentUserScopes();
       
-      // Optional: Log usage for analytics if user is authenticated
+      console.log(`🔐 Tool access check: ${toolName}`);
+      console.log(`📋 Required scopes: [${requiredScopes.join(', ')}]`);
+      console.log(`👤 User scopes: [${userScopes.join(', ')}]`);
+      
+      // Check scope requirements
+      if (!hasRequiredScopes(userScopes, requiredScopes)) {
+        console.error(`❌ Access denied to tool ${toolName}: insufficient scopes`);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                error: "Access denied",
+                message: `Insufficient permissions to access tool '${toolName}'`,
+                required_scopes: requiredScopes,
+                user_scopes: userScopes,
+                suggestion: requiredScopes.length > 0 
+                  ? `Required scopes: ${requiredScopes.join(', ')}` 
+                  : "This tool requires authentication",
+                timestamp: new Date().toISOString()
+              }, null, 2)
+            }
+          ],
+        };
+      }
+      
+      console.log(`✅ Access granted to tool ${toolName}`);
+      
+      // Log usage for analytics
       if (currentApiKeyConfig) {
         logUsage(currentApiKeyConfig, toolName, params);
       } else if (currentAuthContext) {
         logOAuthUsage(currentAuthContext, toolName, params);
       } else {
-        // Log anonymous usage
-        console.log(`📊 Anonymous usage: tool ${toolName} accessed`);
+        // Anonymous access (only for tools with no scope requirements)
+        console.log(`📊 Anonymous access: tool ${toolName} accessed`);
       }
       
       // Execute the tool
@@ -122,40 +217,18 @@ const authenticatedTool = (toolName: string, toolFn: (params: any) => Promise<an
           {
             type: "text",
             text: JSON.stringify({
-              error: `Tool execution failed: ${toolName}`,
-              message: error instanceof Error ? error.message : "Tool execution error",
-              timestamp: new Date().toISOString(),
-              code: "TOOL_EXECUTION_ERROR",
-              tool: toolName
+              error: "Tool execution failed",
+              message: error instanceof Error ? error.message : "Unknown error",
+              tool: toolName,
+              timestamp: new Date().toISOString()
             }, null, 2)
           }
         ],
-      };
+      }
     }
   };
 };
 
-// Helper function to get required scopes for a tool
-const getRequiredScopesForTool = (toolName: string): string[] => {
-  // Map tools to their required scopes based on the OAuth scope definitions
-  const toolScopeMap: Record<string, string[]> = {
-    'query_matomo_database': ['read:analytics'],
-    'get_visitor_analytics': ['read:analytics'],
-    'get_conversion_metrics': ['read:analytics'],
-    'get_content_performance': ['read:analytics'],
-    'get_company_intelligence': ['read:analytics'],
-    'query_knowledge_graph': ['read:knowledge'],
-    'get_organizational_structure': ['read:knowledge'],
-    'find_capability_paths': ['read:knowledge'],
-    'get_knowledge_graph_stats': ['read:knowledge'],
-    'get_usage_analytics': ['admin:usage'],
-    'get_cloud_sql_status': ['admin:usage'],
-    'get_cloud_sql_info': ['admin:usage'],
-    'echo': ['admin:usage']
-  };
-  
-  return toolScopeMap[toolName] || [];
-};
 
 // OAuth usage logging
 const logOAuthUsage = (authContext: AuthContext, toolName: string, params?: any) => {
@@ -215,6 +288,151 @@ const setCache = (key: string, data: any, ttl: number = 30000) => {
 // Global variable to store current request's authentication info (for this serverless instance)
 let currentApiKeyConfig: ApiKeyConfig | null = null;
 let currentAuthContext: AuthContext | null = null;
+
+// Token verification function for withMcpAuth
+const verifyToken = async (req: Request, bearerToken?: string): Promise<{
+  token: string;
+  scopes: string[];
+  clientId: string;
+  extra?: Record<string, any>;
+} | undefined> => {
+  try {
+    console.log('🔐 Verifying token for MCP authentication');
+    console.log(`🔍 Bearer token: ${bearerToken?.substring(0, 20)}...`);
+    console.log(`🔍 Request auth header: ${req.headers.get('authorization')?.substring(0, 20)}...`);
+    
+    // Extract authorization from bearer token or request headers
+    const authorization = bearerToken || req.headers.get('authorization') || '';
+    
+    console.log(`🔍 Final authorization: ${authorization.substring(0, 30)}...`);
+    
+    if (!authorization) {
+      console.log('🔍 No authorization found, allowing unauthenticated access');
+      return undefined; // Return undefined to allow unauthenticated access
+    }
+    
+    // Create a request object for our authentication functions
+    const mockRequest = {
+      headers: {
+        get: (name: string) => {
+          if (name.toLowerCase() === 'authorization') {
+            return authorization;
+          }
+          // Forward other headers from the original request
+          return req.headers.get(name);
+        }
+      }
+    } as NextRequest;
+    
+    // Check for custom MAC authentication format in Bearer token
+    if (authorization.startsWith('mac-auth:')) {
+      console.log('🔍 Detected custom MAC authentication format');
+      
+      // Parse the custom format: "mac-auth:API_KEY:MAC_ADDRESS"
+      // Need to be careful because MAC address contains colons (xx:xx:xx:xx:xx:xx)
+      // Format: mac-auth:API_KEY:XX:XX:XX:XX:XX:XX
+      const withoutPrefix = authorization.replace('mac-auth:', '');
+      const parts = withoutPrefix.split(':');
+      
+      if (parts.length >= 6) { // API key + 6 MAC address parts (at minimum)
+        // MAC address is the last 6 parts joined with colons
+        const macAddress = parts.slice(-6).join(':');
+        // API key is everything before the MAC address
+        const apiKey = parts.slice(0, -6).join(':');
+        
+        // Create mock request with extracted values
+        const macAuthRequest = {
+          headers: {
+            get: (name: string) => {
+              if (name === 'x-api-key') return apiKey;
+              if (name === 'x-mac-address') return macAddress;
+              return req.headers.get(name);
+            }
+          }
+        } as NextRequest;
+        
+        console.log(`🔍 Extracted API key: ${apiKey.substring(0, 8)}... MAC: ${macAddress}`);
+        
+        // Use MAC address authentication
+        const authContext = await authenticateMacAddress(macAuthRequest);
+        
+        // Store context globally for tool access
+        currentAuthContext = authContext;
+        currentApiKeyConfig = {
+          key: apiKey,
+          userId: authContext.userId,
+          name: 'MAC Address Authentication',
+          permissions: authContext.permissions
+        };
+        
+        return {
+          token: apiKey,
+          scopes: ['read:all'], // Grant all access for MAC address auth
+          clientId: authContext.userId,
+          extra: {
+            method: 'mac_address',
+            userId: authContext.userId,
+            permissions: authContext.permissions
+          }
+        };
+      }
+    }
+    
+    const authMethod = detectAuthMethod(mockRequest);
+    console.log(`🔍 Detected auth method: ${authMethod}`);
+    
+    if (authMethod === 'oauth') {
+      // Use OAuth authentication
+      const authContext = await authenticateOAuth(mockRequest);
+      
+      // Store context globally for tool access
+      currentAuthContext = authContext;
+      currentApiKeyConfig = null;
+      
+      return {
+        token: authorization.replace('Bearer ', ''),
+        scopes: authContext.scopes || [],
+        clientId: authContext.clientId || authContext.userId,
+        extra: {
+          method: 'oauth',
+          userId: authContext.userId,
+          permissions: authContext.permissions
+        }
+      };
+    } else if (authMethod === 'mac_address') {
+      // Handle API key authentication via Authorization header
+      // This is a fallback for non-OAuth clients
+      const authContext = await authenticateMacAddress(mockRequest);
+      
+      // Store context globally for tool access
+      currentAuthContext = authContext;
+      currentApiKeyConfig = {
+        key: authorization,
+        userId: authContext.userId,
+        name: 'MAC Address Authentication',
+        permissions: authContext.permissions
+      };
+      
+      return {
+        token: authorization,
+        scopes: ['read:all'], // Grant all access for MAC address auth
+        clientId: authContext.userId,
+        extra: {
+          method: 'mac_address',
+          userId: authContext.userId,
+          permissions: authContext.permissions
+        }
+      };
+    } else {
+      console.log('🔍 No valid authentication method detected, allowing unauthenticated access');
+      return undefined; // Return undefined to allow unauthenticated access
+    }
+  } catch (error) {
+    console.error('❌ Token verification failed:', error);
+    // Return undefined to allow unauthenticated access instead of throwing
+    return undefined;
+  }
+};
 
 /**
  * Industrial MCP Server Handler
@@ -1493,10 +1711,17 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
 // Create secured versions of the handlers with comprehensive protection
 const securedHandler = createSecuredHandler(handler);
 
+// Apply MCP authentication wrapper with flexible scope requirements
+const authenticatedMcpHandler = withMcpAuth(securedHandler, verifyToken, {
+  required: false, // Allow both authenticated and unauthenticated requests for testing
+  requiredScopes: [], // No specific scopes required initially
+  resourceMetadataPath: "/.well-known/oauth-protected-resource"
+});
+
 // Explicit named exports for better compatibility with Vercel
-export const GET = securedHandler;
-export const POST = securedHandler;
-export const HEAD = securedHandler; // Handle connectivity checks
-export const DELETE = securedHandler;
-export const PUT = securedHandler;
-export const OPTIONS = securedHandler; // Handle CORS preflight
+export const GET = authenticatedMcpHandler;
+export const POST = authenticatedMcpHandler;
+export const HEAD = authenticatedMcpHandler; // Handle connectivity checks
+export const DELETE = authenticatedMcpHandler;
+export const PUT = authenticatedMcpHandler;
+export const OPTIONS = authenticatedMcpHandler; // Handle CORS preflight

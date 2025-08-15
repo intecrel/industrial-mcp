@@ -1,7 +1,7 @@
 /**
- * OAuth 2.0 Protected Resource Metadata Endpoint
- * RFC 8705 - OAuth 2.0 Resource Server Metadata
- * Tells clients where the protected MCP resources are located
+ * OAuth 2.1 Protected Resource Server Metadata Endpoint
+ * Based on RFC 8414 (OAuth 2.0 Authorization Server Metadata) 
+ * Extended for MCP resource server metadata
  */
 
 import { NextResponse } from 'next/server';
@@ -11,67 +11,61 @@ export async function GET() {
   try {
     const config = getOAuthConfig();
     
+    // Standard OAuth 2.0 Resource Server Metadata (based on RFC 8414 principles)
     const metadata = {
-      // Resource server identifier
+      // Resource server identifier (standard)
       resource: config.issuer,
       
-      // Authorization server that protects this resource
+      // Authorization servers that can issue tokens for this resource (standard)
       authorization_servers: [config.issuer],
       
-      // MCP server URL (Point Claude.ai to root for OAuth Bearer token proxy)
-      server_url: `${config.issuer}/api`,
-      mcp_server: `${config.issuer}/api`,
-      
-      // Transport endpoints
-      transport_endpoints: [
-        {
-          type: "http", 
-          url: `${config.issuer}/api`,
-          methods: ["POST", "GET"],
-          description: "OAuth Bearer token proxy - forwards to /api/mcp with authentication"
-        },
-        {
-          type: "sse",
-          url: `${config.issuer}/api/sse`, 
-          methods: ["GET", "POST"]
-        }
-      ],
-      
-      // Supported scopes for this resource server
+      // Supported scopes for this resource server (standard)  
       scopes_supported: config.supportedScopes,
       
-      // Bearer token usage
+      // Token introspection endpoint (RFC 7662)
+      introspection_endpoint: `${config.issuer}/api/oauth/introspect`,
+      
+      // Bearer token usage methods (standard)
       bearer_methods_supported: ['header'],
-      bearer_locations_supported: ['authorization'],
       
-      // Resource server capabilities
-      capabilities: {
-        tools: 18,
-        resources: true,
-        prompts: true,
-        notifications: false,
-        progress: false,
-        logging: true
-      },
+      // Token endpoint authentication methods (standard)
+      token_endpoint_auth_methods_supported: [
+        'client_secret_basic',
+        'client_secret_post',
+        'private_key_jwt'
+      ],
       
-      // Service information
-      service_documentation: `${config.issuer}/docs`,
-      service_name: 'Industrial MCP Server',
-      service_version: '2.0.0',
+      // Response types supported (standard)
+      response_types_supported: ['code'],
       
-      // Database information
-      databases: [
-        {
-          type: 'Neo4j',
-          name: 'Knowledge Graph',
-          description: 'Industrial/operational data and organizational structures'
+      // Grant types supported (standard) 
+      grant_types_supported: [
+        'authorization_code',
+        'client_credentials'
+      ],
+      
+      // MCP-specific extensions (non-standard but clearly marked)
+      mcp_extensions: {
+        protocol_version: '2025-03-26',
+        server_info: {
+          name: 'Industrial MCP Server',
+          version: '2.0.0'
         },
-        {
-          type: 'MySQL',
-          name: 'Analytics Database', 
-          description: 'Matomo web analytics and visitor intelligence'
-        }
-      ]
+        endpoints: {
+          mcp: `${config.issuer}/api/mcp`,
+          sse: `${config.issuer}/api/sse`,
+          stdio: `${config.issuer}/api/stdio`
+        },
+        capabilities: {
+          tools: 18,
+          resources: true,
+          prompts: true
+        },
+        databases: [
+          'Neo4j Knowledge Graph',
+          'MySQL Analytics (Matomo)'
+        ]
+      }
     };
     
     console.log('📋 Serving MCP Protected Resource Metadata');

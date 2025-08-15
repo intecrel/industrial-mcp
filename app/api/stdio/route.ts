@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     const { POST: mcpHandler } = await import('../[transport]/route');
     
     // Call the MCP handler
-    const mcpResponse = await mcpHandler(mcpRequest, { params: { transport: 'mcp' } });
+    const mcpResponse = await mcpHandler(mcpRequest);
 
     // Handle different response types
     if (mcpResponse.headers.get('content-type')?.includes('text/event-stream')) {
