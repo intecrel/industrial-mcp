@@ -44,6 +44,10 @@ export async function GET() {
       introspection_endpoint: `${config.issuer}/api/oauth/introspect`,
       revocation_endpoint: `${config.issuer}/api/oauth/revoke`,
       
+      // Resource server endpoint (where Claude.ai should make authenticated requests)
+      resource_endpoint: `${config.issuer}/api/mcp`,
+      protected_resource_metadata: `${config.issuer}/.well-known/oauth-protected-resource`,
+      
       // Additional metadata
       response_modes_supported: ['query', 'fragment'],
       subject_types_supported: ['public'],

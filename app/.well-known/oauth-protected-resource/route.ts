@@ -19,6 +19,10 @@ export async function GET() {
       // Authorization servers that can issue tokens for this resource (standard)
       authorization_servers: [config.issuer],
       
+      // CRITICAL: Resource endpoint where Claude.ai should make authenticated requests
+      resource_endpoint: `${config.issuer}/api/mcp`,
+      resource_registration_endpoint: `${config.issuer}/api/mcp`,
+      
       // Supported scopes for this resource server (standard)  
       scopes_supported: config.supportedScopes,
       

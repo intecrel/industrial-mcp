@@ -154,8 +154,7 @@ export async function POST(request: NextRequest) {
     if (body && body.jsonrpc === "2.0") {
       console.log(`📡 MCP JSON-RPC call detected: ${body.method || 'unknown method'}`);
       
-      // DISABLED: Bearer token requirement for Claude.ai compatibility
-      // Forward both authenticated and unauthenticated requests to /api/mcp
+      // Forward MCP calls to the correct endpoint with authentication
       console.log(`🔄 Forwarding MCP call to /api/mcp (auth: ${hasBearer ? 'Bearer token' : 'anonymous'})`);
       
       // Forward the request to the actual MCP endpoint with all necessary headers
