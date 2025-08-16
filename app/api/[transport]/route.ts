@@ -99,36 +99,27 @@ const validateRequestSecurity = (request: any, body?: any): void => {
 };
 
 // Tool scope requirements - maps tool names to required scopes
+// TEMPORARILY DISABLED: All tools have no scope requirements to allow Claude.ai access
 const TOOL_SCOPE_REQUIREMENTS: Record<string, string[]> = {
-  // Public tools - no authentication required
+  // All tools - no authentication required for Claude.ai compatibility
   "echo": [],
-  
-  // Database exploration - requires database read access
-  "explore_database": ["read:database"],
-  "query_database": ["read:database"], 
-  "analyze_data": ["read:database"],
-  "get_cloud_sql_status": ["read:database"],
-  "get_cloud_sql_info": ["read:database"],
-  
-  // Knowledge graph - requires knowledge access
-  "query_knowledge_graph": ["read:knowledge"],
-  "get_organizational_structure": ["read:knowledge"],
-  "find_capability_paths": ["read:knowledge"], 
-  "get_knowledge_graph_stats": ["read:knowledge"],
-  
-  // Analytics - requires analytics access
-  "query_matomo_database": ["read:analytics"],
-  "get_visitor_analytics": ["read:analytics"],
-  "get_conversion_metrics": ["read:analytics"],
-  "get_content_performance": ["read:analytics"],
-  "get_company_intelligence": ["read:analytics"],
-  
-  // Admin tools - requires admin access
-  "get_usage_analytics": ["read:admin"],
-  
-  // Cross-database tools - require multiple scopes
-  "get_unified_dashboard_data": ["read:analytics", "read:knowledge"],
-  "correlate_operational_relationships": ["read:analytics", "read:knowledge"]
+  "explore_database": [],
+  "query_database": [], 
+  "analyze_data": [],
+  "get_cloud_sql_status": [],
+  "get_cloud_sql_info": [],
+  "query_knowledge_graph": [],
+  "get_organizational_structure": [],
+  "find_capability_paths": [], 
+  "get_knowledge_graph_stats": [],
+  "query_matomo_database": [],
+  "get_visitor_analytics": [],
+  "get_conversion_metrics": [],
+  "get_content_performance": [],
+  "get_company_intelligence": [],
+  "get_usage_analytics": [],
+  "get_unified_dashboard_data": [],
+  "correlate_operational_relationships": []
 };
 
 // Check if user has required scopes for a tool
