@@ -13,8 +13,8 @@ export async function GET() {
     
     // Standard OAuth 2.0 Resource Server Metadata (based on RFC 8414 principles)
     const metadata = {
-      // Resource server identifier (standard)
-      resource: config.issuer,
+      // Resource server identifier - CRITICAL: This should be the actual MCP endpoint URL
+      resource: `${config.issuer}/api/mcp`,
       
       // Authorization servers that can issue tokens for this resource (standard)
       authorization_servers: [config.issuer],
