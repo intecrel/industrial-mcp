@@ -50,7 +50,7 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
     // Get web analytics data from MySQL (Matomo)
     if (include_web_analytics) {
       try {
-        const mysqlConnection = dbManager.getConnection('mysql')
+        const mysqlConnection = dbManager.getConnection() // Use default connection
         if (mysqlConnection.type === 'mysql') {
           results.data_sources.push('mysql_analytics')
           
@@ -291,7 +291,7 @@ export async function correlateOperationalRelationships(options: OperationalCorr
           const companyResult = await neo4jConnection.query(companyQuery, companyParams)
           
           // For each company found, try to get web analytics data
-          const mysqlConnection = dbManager.getConnection('mysql')
+          const mysqlConnection = dbManager.getConnection() // Use default connection
           if (mysqlConnection.type === 'mysql' && companyResult.data) {
             for (const company of companyResult.data) {
               try {
@@ -406,7 +406,7 @@ async function correlateGeographicData(dbManager: any, options: { date_range: st
     const locationResult = await neo4jConnection.query(locationQuery, { limit: options.limit })
     
     // Get geographic distribution from MySQL (Matomo)
-    const mysqlConnection = dbManager.getConnection('mysql')
+    const mysqlConnection = dbManager.getConnection() // Use default connection
     const dateCondition = options.date_range === 'last_7_days' 
       ? 'visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)'
       : 'visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)'
@@ -466,7 +466,7 @@ async function correlateGeographicData(dbManager: any, options: { date_range: st
  */
 async function correlateVisitorToEntity(dbManager: any, options: { website_domain: string; date_range: string; limit: number }) {
   try {
-    const mysqlConnection = dbManager.getConnection('mysql')
+    const mysqlConnection = dbManager.getConnection() // Use default connection
     const dateCondition = options.date_range === 'last_7_days' 
       ? 'lv.visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)'
       : 'lv.visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)'
