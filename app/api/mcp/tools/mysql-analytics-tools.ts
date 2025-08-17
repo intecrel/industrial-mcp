@@ -59,7 +59,7 @@ export async function queryMatomoDatabase(options: MatomoQueryOptions) {
     const validatedParameters = ValidationUtils.validateSqlParameters(parameters)
     
     const dbManager = await getGlobalDatabaseManager()
-    const connection = dbManager.getConnection('mysql')
+    const connection = dbManager.getConnection() // Use default connection
     
     if (connection.type !== 'mysql') {
       throw new Error('MySQL connection required for Matomo analytics')
@@ -117,7 +117,7 @@ export async function getVisitorAnalytics(options: VisitorAnalyticsOptions = {})
     
     const { date_range = 'last_7_days', site_id, limit = 100 } = validatedInput
     const dbManager = await getGlobalDatabaseManager()
-    const connection = dbManager.getConnection('mysql')
+    const connection = dbManager.getConnection() // Use default connection
     
     if (connection.type !== 'mysql') {
       throw new Error('MySQL connection required for visitor analytics')
@@ -234,7 +234,7 @@ export async function getConversionMetrics(options: ConversionMetricsOptions = {
   
   try {
     const dbManager = await getGlobalDatabaseManager()
-    const connection = dbManager.getConnection('mysql')
+    const connection = dbManager.getConnection() // Use default connection
     
     if (connection.type !== 'mysql') {
       throw new Error('MySQL connection required for conversion metrics')
@@ -345,7 +345,7 @@ export async function getContentPerformance(options: ContentPerformanceOptions =
   
   try {
     const dbManager = await getGlobalDatabaseManager()
-    const connection = dbManager.getConnection('mysql')
+    const connection = dbManager.getConnection() // Use default connection
     
     if (connection.type !== 'mysql') {
       throw new Error('MySQL connection required for content performance')
@@ -478,7 +478,7 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
   
   try {
     const dbManager = await getGlobalDatabaseManager()
-    const connection = dbManager.getConnection('mysql')
+    const connection = dbManager.getConnection() // Use default connection
     
     if (connection.type !== 'mysql') {
       throw new Error('MySQL connection required for company intelligence')
