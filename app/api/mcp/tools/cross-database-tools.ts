@@ -142,24 +142,42 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
           results.data_sources.push('neo4j_operational')
           
           // Get organizational overview
-          const orgQuery = `
-            MATCH (c:Company)
-            OPTIONAL MATCH (c)-[:HAS_LOCATION]->(l:Location)
-            OPTIONAL MATCH (c)-[:OPERATES]->(m:Machine)
-            OPTIONAL MATCH (c)-[:RUNS]->(p:Process)
-            OPTIONAL MATCH (c)-[:PROVIDES]->(s:Service)
-            RETURN 
-              c.name as company_name,
-              c.industry as industry,
-              c.size as company_size,
-              count(DISTINCT l) as locations_count,
-              count(DISTINCT m) as machines_count,
-              count(DISTINCT p) as processes_count,
-              count(DISTINCT s) as services_count
-            ${company_name ? 'WHERE c.name CONTAINS $company_name' : ''}
-            ORDER BY company_name
-            LIMIT $limit
-          `
+          const orgQuery = company_name 
+            ? `
+              MATCH (c:Company)
+              OPTIONAL MATCH (c)-[:HAS_LOCATION]->(l:Location)
+              OPTIONAL MATCH (c)-[:OPERATES]->(m:Machine)
+              OPTIONAL MATCH (c)-[:RUNS]->(p:Process)
+              OPTIONAL MATCH (c)-[:PROVIDES]->(s:Service)
+              WHERE c.name CONTAINS $param0
+              RETURN 
+                c.name as company_name,
+                c.industry as industry,
+                c.size as company_size,
+                count(DISTINCT l) as locations_count,
+                count(DISTINCT m) as machines_count,
+                count(DISTINCT p) as processes_count,
+                count(DISTINCT s) as services_count
+              ORDER BY company_name
+              LIMIT $param1
+            `
+            : `
+              MATCH (c:Company)
+              OPTIONAL MATCH (c)-[:HAS_LOCATION]->(l:Location)
+              OPTIONAL MATCH (c)-[:OPERATES]->(m:Machine)
+              OPTIONAL MATCH (c)-[:RUNS]->(p:Process)
+              OPTIONAL MATCH (c)-[:PROVIDES]->(s:Service)
+              RETURN 
+                c.name as company_name,
+                c.industry as industry,
+                c.size as company_size,
+                count(DISTINCT l) as locations_count,
+                count(DISTINCT m) as machines_count,
+                count(DISTINCT p) as processes_count,
+                count(DISTINCT s) as services_count
+              ORDER BY company_name
+              LIMIT $param0
+            `
           
           const orgParams = company_name 
             ? [company_name, Math.min(limit, 20)]
@@ -169,17 +187,28 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
           results.operational_data = orgResult.data || []
           
           // Get capability overview
-          const capabilityQuery = `
-            MATCH (c:Company)-[:EMPLOYS]->(e:Employee)-[:HAS_SKILL]->(sk:Skill)
-            RETURN 
-              c.name as company_name,
-              collect(DISTINCT sk.name)[0..5] as top_skills,
-              count(DISTINCT e) as employees_count,
-              count(DISTINCT sk) as skills_count
-            ${company_name ? 'WHERE c.name CONTAINS $company_name' : ''}
-            ORDER BY skills_count DESC
-            LIMIT $limit
-          `
+          const capabilityQuery = company_name
+            ? `
+              MATCH (c:Company)-[:EMPLOYS]->(e:Employee)-[:HAS_SKILL]->(sk:Skill)
+              WHERE c.name CONTAINS $param0
+              RETURN 
+                c.name as company_name,
+                collect(DISTINCT sk.name)[0..5] as top_skills,
+                count(DISTINCT e) as employees_count,
+                count(DISTINCT sk) as skills_count
+              ORDER BY skills_count DESC
+              LIMIT $param1
+            `
+            : `
+              MATCH (c:Company)-[:EMPLOYS]->(e:Employee)-[:HAS_SKILL]->(sk:Skill)
+              RETURN 
+                c.name as company_name,
+                collect(DISTINCT sk.name)[0..5] as top_skills,
+                count(DISTINCT e) as employees_count,
+                count(DISTINCT sk) as skills_count
+              ORDER BY skills_count DESC
+              LIMIT $param0
+            `
           
           const capabilityResult = await neo4jConnection.query(capabilityQuery, orgParams)
           results.capability_data = capabilityResult.data || []
@@ -262,27 +291,48 @@ export async function correlateOperationalRelationships(options: OperationalCorr
         // Find companies in Neo4j and correlate with web analytics
         const neo4jConnection = dbManager.getConnection('neo4j')
         if (neo4jConnection.type === 'neo4j') {
-          const companyQuery = `
-            MATCH (c:Company)
-            OPTIONAL MATCH (c)-[:HAS_LOCATION]->(l:Location)
-            OPTIONAL MATCH (c)-[:OPERATES]->(m:Machine)
-            OPTIONAL MATCH (c)-[:RUNS]->(p:Process)
-            OPTIONAL MATCH (c)-[:PROVIDES]->(s:Service)
-            OPTIONAL MATCH (c)-[:EMPLOYS]->(e:Employee)
-            RETURN 
-              c.name as company_name,
-              c.website as company_website,
-              c.industry as industry,
-              c.location as headquarters_location,
-              count(DISTINCT l) as locations,
-              count(DISTINCT m) as machines,
-              count(DISTINCT p) as processes,
-              count(DISTINCT s) as services,
-              count(DISTINCT e) as employees
-            ${entity_name ? 'WHERE c.name CONTAINS $entity_name' : ''}
-            ORDER BY c.name
-            LIMIT $limit
-          `
+          const companyQuery = entity_name
+            ? `
+              MATCH (c:Company)
+              OPTIONAL MATCH (c)-[:HAS_LOCATION]->(l:Location)
+              OPTIONAL MATCH (c)-[:OPERATES]->(m:Machine)
+              OPTIONAL MATCH (c)-[:RUNS]->(p:Process)
+              OPTIONAL MATCH (c)-[:PROVIDES]->(s:Service)
+              OPTIONAL MATCH (c)-[:EMPLOYS]->(e:Employee)
+              WHERE c.name CONTAINS $param0
+              RETURN 
+                c.name as company_name,
+                c.website as company_website,
+                c.industry as industry,
+                c.location as headquarters_location,
+                count(DISTINCT l) as locations,
+                count(DISTINCT m) as machines,
+                count(DISTINCT p) as processes,
+                count(DISTINCT s) as services,
+                count(DISTINCT e) as employees
+              ORDER BY c.name
+              LIMIT $param1
+            `
+            : `
+              MATCH (c:Company)
+              OPTIONAL MATCH (c)-[:HAS_LOCATION]->(l:Location)
+              OPTIONAL MATCH (c)-[:OPERATES]->(m:Machine)
+              OPTIONAL MATCH (c)-[:RUNS]->(p:Process)
+              OPTIONAL MATCH (c)-[:PROVIDES]->(s:Service)
+              OPTIONAL MATCH (c)-[:EMPLOYS]->(e:Employee)
+              RETURN 
+                c.name as company_name,
+                c.website as company_website,
+                c.industry as industry,
+                c.location as headquarters_location,
+                count(DISTINCT l) as locations,
+                count(DISTINCT m) as machines,
+                count(DISTINCT p) as processes,
+                count(DISTINCT s) as services,
+                count(DISTINCT e) as employees
+              ORDER BY c.name
+              LIMIT $param0
+            `
           
           const companyParams = entity_name 
             ? [entity_name, Math.min(limit, 50)]
