@@ -123,7 +123,7 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
               LIMIT ?
             `
             
-            const companyParams = [...parameters, `%${company_name}%`, Math.min(limit, 20)]
+            const companyParams = [...parameters, `%${company_name}%`, parseInt(Math.min(limit, 20).toString(), 10)]
             const companyResult = await mysqlConnection.query(companyQuery, companyParams)
             results.company_analytics = companyResult.data || []
           }
@@ -180,8 +180,8 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
             `
           
           const orgParams = company_name 
-            ? [company_name, Math.min(limit, 20)]
-            : [Math.min(limit, 20)]
+            ? [company_name, parseInt(Math.min(limit, 20).toString(), 10)]
+            : [parseInt(Math.min(limit, 20).toString(), 10)]
           
           const orgResult = await neo4jConnection.query(orgQuery, orgParams)
           results.operational_data = orgResult.data || []
@@ -335,8 +335,8 @@ export async function correlateOperationalRelationships(options: OperationalCorr
             `
           
           const companyParams = entity_name 
-            ? [entity_name, Math.min(limit, 50)]
-            : [Math.min(limit, 50)]
+            ? [entity_name, parseInt(Math.min(limit, 50).toString(), 10)]
+            : [parseInt(Math.min(limit, 50).toString(), 10)]
           
           const companyResult = await neo4jConnection.query(companyQuery, companyParams)
           
@@ -450,10 +450,10 @@ async function correlateGeographicData(dbManager: any, options: { date_range: st
         l.city as city,
         count(DISTINCT c) as companies_count
       ORDER BY companies_count DESC
-      LIMIT $limit
+      LIMIT $param0
     `
     
-    const locationResult = await neo4jConnection.query(locationQuery, { limit: options.limit })
+    const locationResult = await neo4jConnection.query(locationQuery, [parseInt(options.limit.toString(), 10)])
     
     // Get geographic distribution from MySQL (Matomo)
     const mysqlConnection = dbManager.getConnection() // Use default connection
@@ -556,7 +556,7 @@ async function correlateVisitorToEntity(dbManager: any, options: { website_domai
         try {
           const entityQuery = `
             MATCH (c:Company)
-            WHERE c.name CONTAINS $company_name OR c.website CONTAINS $website
+            WHERE c.name CONTAINS $param0 OR c.website CONTAINS $param1
             OPTIONAL MATCH (c)-[:OPERATES]->(m:Machine)
             OPTIONAL MATCH (c)-[:RUNS]->(p:Process)
             OPTIONAL MATCH (c)-[:PROVIDES]->(s:Service)
@@ -570,10 +570,10 @@ async function correlateVisitorToEntity(dbManager: any, options: { website_domai
             LIMIT 1
           `
           
-          const entityParams = {
-            company_name: visitor.company_name || '',
-            website: visitor.company_website || ''
-          }
+          const entityParams = [
+            visitor.company_name || '',
+            visitor.company_website || ''
+          ]
           
           const entityResult = await neo4jConnection.query(entityQuery, entityParams)
           

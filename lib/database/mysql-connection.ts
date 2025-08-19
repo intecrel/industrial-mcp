@@ -104,8 +104,6 @@ export class MySQLConnection extends BaseDatabaseConnection {
         password: this.config.password,
         database: this.config.database,
         connectionLimit: this.config.maxConnections || 10,
-        acquireTimeout: this.config.timeout || 60000,
-        timeout: this.config.timeout || 60000,
         timezone: 'Z',
         dateStrings: false,
         multipleStatements: this.mysqlConfig.multipleStatements || false,
@@ -174,8 +172,6 @@ export class MySQLConnection extends BaseDatabaseConnection {
       password: this.config.password,
       database: this.config.database,
       connectionLimit: this.config.maxConnections || 10,
-      acquireTimeout: this.config.timeout || 60000,
-      timeout: this.config.timeout || 60000,
       timezone: 'Z', // Use UTC
       dateStrings: false,
       multipleStatements: this.mysqlConfig.multipleStatements || false,
