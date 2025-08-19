@@ -76,7 +76,7 @@ export async function getCloudSQLStatus(params: CloudSQLStatusParams = {}) {
           
           // Get basic connection info
           const connectionInfo = await connection.query(
-            `SELECT CONNECTION_ID() as connection_id, USER() as current_user, DATABASE() as current_database, VERSION() as mysql_version, @@ssl_cipher as ssl_cipher, NOW() as server_time`
+            `SELECT CONNECTION_ID() as connection_id, USER() as currentuser, DATABASE() as current_database, VERSION() as mysql_version, @@ssl_cipher as ssl_cipher, NOW() as server_time`
           )
           
           if (connectionInfo.success && connectionInfo.data?.[0]) {
