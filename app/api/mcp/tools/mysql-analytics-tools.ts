@@ -188,7 +188,9 @@ export async function getVisitorAnalytics(options: VisitorAnalyticsOptions = {})
       ${whereClause}
     `
     
-    const summaryResult = await connection.query(summaryQuery, parameters.slice(0, -1))
+    // Create separate parameters array for summary query (exclude the LIMIT parameter)
+    const summaryParameters = site_id ? [site_id] : []
+    const summaryResult = await connection.query(summaryQuery, summaryParameters)
     
     // Convert null values to numbers for validation
     const summaryData = summaryResult.data?.[0] || {}
@@ -313,7 +315,11 @@ export async function getConversionMetrics(options: ConversionMetricsOptions = {
       ${whereClause.replace('c.idsite', 'idsite')}
     `
     
-    const summaryResult = await connection.query(summaryQuery, parameters.slice(0, -1))
+    // Create separate parameters array for summary query (exclude the LIMIT parameter)
+    const summaryParameters = []
+    if (site_id) summaryParameters.push(site_id)
+    if (goal_id) summaryParameters.push(goal_id)
+    const summaryResult = await connection.query(summaryQuery, summaryParameters)
     
     return {
       success: true,
@@ -595,7 +601,13 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
       ${whereClause}
     `
     
-    const summaryResult = await connection.query(summaryQuery, parameters.slice(0, -1))
+    // Create separate parameters array for summary query (exclude the LIMIT parameter)
+    const summaryParameters = []
+    if (site_id) summaryParameters.push(site_id)
+    if (company_name) summaryParameters.push(`%${company_name}%`)
+    if (domain) summaryParameters.push(`%${domain}%`)
+    if (country) summaryParameters.push(country)
+    const summaryResult = await connection.query(summaryQuery, summaryParameters)
     
     return {
       success: true,
