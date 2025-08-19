@@ -164,10 +164,7 @@ export async function getVisitorAnalytics(options: VisitorAnalyticsOptions = {})
         AVG(visit_total_time) as avg_session_duration,
         AVG(visit_total_actions) as avg_pages_per_visit,
         SUM(CASE WHEN visitor_returning = 1 THEN 1 ELSE 0 END) as returning_visitors,
-        SUM(CASE WHEN visitor_returning = 0 THEN 1 ELSE 0 END) as new_visitors,
-        location_country as top_country,
-        config_browser_name as top_browser,
-        config_device_type as device_type
+        SUM(CASE WHEN visitor_returning = 0 THEN 1 ELSE 0 END) as new_visitors
       FROM matomo_log_visit 
       ${whereClause}
       GROUP BY DATE(visit_first_action_time)
@@ -193,18 +190,22 @@ export async function getVisitorAnalytics(options: VisitorAnalyticsOptions = {})
     
     const summaryResult = await connection.query(summaryQuery, parameters.slice(0, -1))
     
+    // Convert null values to numbers for validation
+    const summaryData = summaryResult.data?.[0] || {}
+    const normalizedSummary = {
+      total_visits: Number(summaryData.total_visits || 0),
+      unique_visitors: Number(summaryData.unique_visitors || 0),
+      avg_session_duration: Number(summaryData.avg_session_duration || 0),
+      total_page_views: Number(summaryData.total_page_views || 0),
+      countries_count: Number(summaryData.countries_count || 0)
+    }
+    
     const output = {
       success: true,
       analytics_type: 'visitor_analytics' as const,
       date_range,
       site_id,
-      summary: summaryResult.data?.[0] || {
-        total_visits: 0,
-        unique_visitors: 0,
-        avg_session_duration: 0,
-        total_page_views: 0,
-        countries_count: 0
-      },
+      summary: normalizedSummary,
       daily_metrics: result.data || [],
       rows_returned: result.data?.length || 0,
       timestamp: new Date().toISOString()
@@ -291,7 +292,7 @@ export async function getConversionMetrics(options: ConversionMetricsOptions = {
       FROM matomo_log_conversion c
       LEFT JOIN matomo_goal g ON c.idgoal = g.idgoal AND c.idsite = g.idsite
       ${whereClause}
-      GROUP BY DATE(c.server_time), c.idgoal, g.name
+      GROUP BY DATE(c.server_time), c.idgoal, g.name, g.description, g.revenue
       ORDER BY conversion_date DESC, total_conversions DESC
       LIMIT ?
     `
@@ -393,13 +394,12 @@ export async function getContentPerformance(options: ContentPerformanceOptions =
             a.url_prefix as url_prefix,
             COUNT(*) as page_views,
             COUNT(DISTINCT lva.idvisit) as unique_page_views,
-            AVG(lva.time_spent) as avg_time_on_page,
-            SUM(CASE WHEN lva.interaction_position = 1 THEN 1 ELSE 0 END) as bounce_count
+            AVG(lva.time_spent) as avg_time_on_page
           FROM matomo_log_link_visit_action lva
           JOIN matomo_log_action a ON lva.idaction_url = a.idaction
           ${whereClause}
           AND a.type = 1
-          GROUP BY lva.idaction_url, a.name
+          GROUP BY lva.idaction_url, a.name, a.url_prefix
           ORDER BY page_views DESC
           LIMIT ?
         `
@@ -566,7 +566,12 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
         vesp.companyName, 
         vesp.companyUrl,
         JSON_EXTRACT(vesp.geo, '$.country'),
-        JSON_EXTRACT(vesp.geo, '$.city')
+        JSON_EXTRACT(vesp.geo, '$.city'),
+        JSON_EXTRACT(vesp.geo, '$.region'),
+        JSON_EXTRACT(vesp.companyDetails, '$.size'),
+        JSON_EXTRACT(vesp.companyDetails, '$.industry'),
+        JSON_EXTRACT(vesp.companyDetails, '$.revenue'),
+        JSON_EXTRACT(vesp.companyDetails, '$.employees')
       ORDER BY total_visits DESC, last_visit DESC
       LIMIT ?
     `
