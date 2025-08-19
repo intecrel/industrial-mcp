@@ -83,7 +83,7 @@ export async function getCloudSQLStatus(params: CloudSQLStatusParams = {}) {
             const info = connectionInfo.data[0]
             results.databases[connectionName].details = {
               connection_id: info.connection_id,
-              current_user: info.current_user,
+              current_user: info.currentuser,
               current_database: info.current_database, 
               mysql_version: info.mysql_version,
               ssl_cipher: info.ssl_cipher,
