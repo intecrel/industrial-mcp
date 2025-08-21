@@ -341,8 +341,16 @@ export async function correlateOperationalRelationships(options: OperationalCorr
             `
           
           const companyParams = entity_name 
-            ? [entity_name, Math.min(safeLimit, 50)]
-            : [Math.min(safeLimit, 50)]
+            ? [entity_name, parseInt(Math.min(safeLimit, 50).toString(), 10)]
+            : [parseInt(Math.min(safeLimit, 50).toString(), 10)]
+          
+          // DEBUG: Print exact Neo4j query and parameters before execution
+          console.log('🔍 DEBUG correlateOperationalRelationships Neo4j QUERY:')
+          console.log('   Query:', companyQuery.substring(0, 200) + '...')
+          console.log('   Parameters:', JSON.stringify(companyParams))
+          console.log('   Parameter types:', companyParams.map(p => typeof p))
+          console.log('   SafeLimit:', safeLimit, 'Type:', typeof safeLimit)
+          console.log('   Math.min result:', Math.min(safeLimit, 50), 'Type:', typeof Math.min(safeLimit, 50))
           
           const companyResult = await neo4jConnection.query(companyQuery, companyParams)
           
