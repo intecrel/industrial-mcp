@@ -35,6 +35,9 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
     include_operational_data = true,
     limit = 50 
   } = options
+
+  // Ensure limit is an integer to prevent Neo4j errors
+  const safeLimit = parseInt(limit.toString(), 10)
   
   try {
     const dbManager = await getGlobalDatabaseManager()
@@ -123,7 +126,7 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
               LIMIT ?
             `
             
-            const companyParams = [...parameters, `%${company_name}%`, parseInt(Math.min(limit, 20).toString(), 10)]
+            const companyParams = [...parameters, `%${company_name}%`, Math.min(safeLimit, 20)]
             const companyResult = await mysqlConnection.query(companyQuery, companyParams)
             results.company_analytics = companyResult.data || []
           }
@@ -180,8 +183,8 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
             `
           
           const orgParams = company_name 
-            ? [company_name, parseInt(Math.min(limit, 20).toString(), 10)]
-            : [parseInt(Math.min(limit, 20).toString(), 10)]
+            ? [company_name, Math.min(safeLimit, 20)]
+            : [Math.min(safeLimit, 20)]
           
           const orgResult = await neo4jConnection.query(orgQuery, orgParams)
           results.operational_data = orgResult.data || []
@@ -272,6 +275,9 @@ export async function correlateOperationalRelationships(options: OperationalCorr
     correlation_type = 'company_to_operations',
     limit = 30
   } = options
+
+  // Ensure limit is an integer to prevent Neo4j errors
+  const safeLimit = parseInt(limit.toString(), 10)
   
   try {
     const dbManager = await getGlobalDatabaseManager()
@@ -335,8 +341,8 @@ export async function correlateOperationalRelationships(options: OperationalCorr
             `
           
           const companyParams = entity_name 
-            ? [entity_name, parseInt(Math.min(limit, 50).toString(), 10)]
-            : [parseInt(Math.min(limit, 50).toString(), 10)]
+            ? [entity_name, Math.min(safeLimit, 50)]
+            : [Math.min(safeLimit, 50)]
           
           const companyResult = await neo4jConnection.query(companyQuery, companyParams)
           
@@ -453,7 +459,7 @@ async function correlateGeographicData(dbManager: any, options: { date_range: st
       LIMIT $param0
     `
     
-    const locationResult = await neo4jConnection.query(locationQuery, [parseInt(options.limit.toString(), 10)])
+    const locationResult = await neo4jConnection.query(locationQuery, [options.limit])
     
     // Get geographic distribution from MySQL (Matomo)
     const mysqlConnection = dbManager.getConnection() // Use default connection

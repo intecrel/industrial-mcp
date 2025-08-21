@@ -59,7 +59,7 @@ export async function queryMatomoDatabase(options: MatomoQueryOptions) {
     const validatedParameters = ValidationUtils.validateSqlParameters(parameters)
     
     const dbManager = await getGlobalDatabaseManager()
-    const connection = dbManager.getConnection() // Use default connection
+    const connection = dbManager.getConnection('mysql') // Explicitly get MySQL connection
     
     if (connection.type !== 'mysql') {
       throw new Error('MySQL connection required for Matomo analytics')
@@ -117,7 +117,7 @@ export async function getVisitorAnalytics(options: VisitorAnalyticsOptions = {})
     
     const { date_range = 'last_7_days', site_id, limit = 100 } = validatedInput
     const dbManager = await getGlobalDatabaseManager()
-    const connection = dbManager.getConnection() // Use default connection
+    const connection = dbManager.getConnection('mysql') // Explicitly get MySQL connection
     
     if (connection.type !== 'mysql') {
       throw new Error('MySQL connection required for visitor analytics')
@@ -174,6 +174,12 @@ export async function getVisitorAnalytics(options: VisitorAnalyticsOptions = {})
     
     parameters.push(Math.min(limit, 200))
     
+    // DEBUG: Print exact query and parameters before execution
+    console.log('🔍 DEBUG get_visitor_analytics MAIN QUERY:')
+    console.log('   Query:', query)
+    console.log('   Parameters:', JSON.stringify(parameters))
+    console.log('   Parameter types:', parameters.map(p => typeof p))
+    
     const result = await connection.query(query, parameters)
     
     // Get additional metrics using indexed idsite
@@ -189,7 +195,14 @@ export async function getVisitorAnalytics(options: VisitorAnalyticsOptions = {})
     `
     
     // Create separate parameters array for summary query (exclude the LIMIT parameter)
-    const summaryParameters = site_id ? [site_id] : []
+    const summaryParameters = parameters.slice(0, -1) // Remove the last parameter (LIMIT)
+    
+    // DEBUG: Print exact summary query and parameters before execution
+    console.log('🔍 DEBUG get_visitor_analytics SUMMARY QUERY:')
+    console.log('   Query:', summaryQuery)
+    console.log('   Parameters:', JSON.stringify(summaryParameters))
+    console.log('   Parameter types:', summaryParameters.map(p => typeof p))
+    
     const summaryResult = await connection.query(summaryQuery, summaryParameters)
     
     // Convert null values to numbers for validation
@@ -237,7 +250,7 @@ export async function getConversionMetrics(options: ConversionMetricsOptions = {
   
   try {
     const dbManager = await getGlobalDatabaseManager()
-    const connection = dbManager.getConnection() // Use default connection
+    const connection = dbManager.getConnection('mysql') // Explicitly get MySQL connection
     
     if (connection.type !== 'mysql') {
       throw new Error('MySQL connection required for conversion metrics')
@@ -352,7 +365,7 @@ export async function getContentPerformance(options: ContentPerformanceOptions =
   
   try {
     const dbManager = await getGlobalDatabaseManager()
-    const connection = dbManager.getConnection() // Use default connection
+    const connection = dbManager.getConnection('mysql') // Explicitly get MySQL connection
     
     if (connection.type !== 'mysql') {
       throw new Error('MySQL connection required for content performance')
@@ -484,7 +497,7 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
   
   try {
     const dbManager = await getGlobalDatabaseManager()
-    const connection = dbManager.getConnection() // Use default connection
+    const connection = dbManager.getConnection('mysql') // Explicitly get MySQL connection
     
     if (connection.type !== 'mysql') {
       throw new Error('MySQL connection required for company intelligence')
@@ -602,11 +615,7 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
     `
     
     // Create separate parameters array for summary query (exclude the LIMIT parameter)
-    const summaryParameters = []
-    if (site_id) summaryParameters.push(site_id)
-    if (company_name) summaryParameters.push(`%${company_name}%`)
-    if (domain) summaryParameters.push(`%${domain}%`)
-    if (country) summaryParameters.push(country)
+    const summaryParameters = parameters.slice(0, -1) // Remove the last parameter (LIMIT)
     const summaryResult = await connection.query(summaryQuery, summaryParameters)
     
     return {
