@@ -169,10 +169,10 @@ export async function getVisitorAnalytics(options: VisitorAnalyticsOptions = {})
       ${whereClause}
       GROUP BY DATE(visit_first_action_time)
       ORDER BY visit_date DESC
-      LIMIT ?
+      LIMIT ${limit}
     `
     
-    parameters.push(Math.min(limit, 200))
+    // Note: LIMIT uses direct substitution, no parameter needed
     
     // DEBUG: Print exact query and parameters before execution
     console.log('🔍 DEBUG get_visitor_analytics MAIN QUERY:')
@@ -194,8 +194,8 @@ export async function getVisitorAnalytics(options: VisitorAnalyticsOptions = {})
       ${whereClause}
     `
     
-    // Create separate parameters array for summary query (exclude the LIMIT parameter)
-    const summaryParameters = parameters.slice(0, -1) // Remove the last parameter (LIMIT)
+    // Create parameters array for summary query (no LIMIT parameter to exclude)
+    const summaryParameters = parameters
     
     // DEBUG: Print exact summary query and parameters before execution
     console.log('🔍 DEBUG get_visitor_analytics SUMMARY QUERY:')
