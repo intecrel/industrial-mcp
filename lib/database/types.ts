@@ -39,7 +39,7 @@ export interface DatabaseConnection {
   disconnect(): Promise<void>
   
   // Raw query execution
-  query<T = any>(query: string, params?: any[]): Promise<QueryResult<T>>
+  query<T = any>(query: string, params?: any[] | Record<string, any>): Promise<QueryResult<T>>
   
   // Transaction support
   beginTransaction(): Promise<void>

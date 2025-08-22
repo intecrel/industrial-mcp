@@ -4,6 +4,7 @@
  */
 
 import { getGlobalDatabaseManager } from '@/lib/database'
+import  neo4j  from 'neo4j-driver'
 
 export interface UnifiedDashboardOptions {
   company_name?: string
@@ -35,6 +36,9 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
     include_operational_data = true,
     limit = 50 
   } = options
+
+  // Ensure limit is an integer to prevent Neo4j errors
+  const safeLimit = parseInt(limit.toString(), 10)
   
   try {
     const dbManager = await getGlobalDatabaseManager()
@@ -120,10 +124,10 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
               AND vesp.companyName LIKE ?
               GROUP BY vesp.companyName, vesp.companyUrl
               ORDER BY total_visits DESC
-              LIMIT ?
+              LIMIT ${Math.min(safeLimit, 20)}
             `
             
-            const companyParams = [...parameters, `%${company_name}%`, parseInt(Math.min(limit, 20).toString(), 10)]
+            const companyParams = [...parameters, `%${company_name}%`]
             const companyResult = await mysqlConnection.query(companyQuery, companyParams)
             results.company_analytics = companyResult.data || []
           }
@@ -180,8 +184,8 @@ export async function getUnifiedDashboardData(options: UnifiedDashboardOptions =
             `
           
           const orgParams = company_name 
-            ? [company_name, parseInt(Math.min(limit, 20).toString(), 10)]
-            : [parseInt(Math.min(limit, 20).toString(), 10)]
+            ? [company_name, neo4j.int(Math.min(safeLimit, 20))]
+            : [neo4j.int(Math.min(safeLimit, 20))]
           
           const orgResult = await neo4jConnection.query(orgQuery, orgParams)
           results.operational_data = orgResult.data || []
@@ -272,6 +276,9 @@ export async function correlateOperationalRelationships(options: OperationalCorr
     correlation_type = 'company_to_operations',
     limit = 30
   } = options
+
+  // Ensure limit is an integer to prevent Neo4j errors
+  const safeLimit = parseInt(limit.toString(), 10)
   
   try {
     const dbManager = await getGlobalDatabaseManager()
@@ -335,8 +342,16 @@ export async function correlateOperationalRelationships(options: OperationalCorr
             `
           
           const companyParams = entity_name 
-            ? [entity_name, parseInt(Math.min(limit, 50).toString(), 10)]
-            : [parseInt(Math.min(limit, 50).toString(), 10)]
+            ? [entity_name, neo4j.int(Math.min(safeLimit, 50))]
+            : [neo4j.int(Math.min(safeLimit, 50))]
+
+          // DEBUG: Print exact Neo4j query and parameters before execution
+          console.log('🔍 DEBUG correlateOperationalRelationships Neo4j QUERY:')
+          console.log('   Query:', companyQuery)
+          console.log('   Parameters:', JSON.stringify(companyParams))
+          console.log('   Parameter types:', companyParams.map(p => typeof p))
+          console.log('   SafeLimit:', safeLimit, 'Type:', typeof safeLimit)
+          console.log('   Math.min result:', Math.min(safeLimit, 50), 'Type:', typeof Math.min(safeLimit, 50))
           
           const companyResult = await neo4jConnection.query(companyQuery, companyParams)
           
@@ -453,7 +468,7 @@ async function correlateGeographicData(dbManager: any, options: { date_range: st
       LIMIT $param0
     `
     
-    const locationResult = await neo4jConnection.query(locationQuery, [parseInt(options.limit.toString(), 10)])
+    const locationResult = await neo4jConnection.query(locationQuery, [neo4j.int(Math.min(options.limit, 50))])
     
     // Get geographic distribution from MySQL (Matomo)
     const mysqlConnection = dbManager.getConnection() // Use default connection
@@ -472,10 +487,10 @@ async function correlateGeographicData(dbManager: any, options: { date_range: st
       AND location_country IS NOT NULL
       GROUP BY location_country, location_city
       ORDER BY visits DESC
-      LIMIT ?
+      LIMIT ${Math.min(options.limit, 200)}
     `
     
-    const webGeoResult = await mysqlConnection.query(webGeoQuery, [options.limit])
+    const webGeoResult = await mysqlConnection.query(webGeoQuery, [])
     
     // Correlate the data
     const correlations = []
@@ -540,10 +555,10 @@ async function correlateVisitorToEntity(dbManager: any, options: { website_domai
       AND vesp.companyUrl LIKE ?
       GROUP BY vesp.companyName, vesp.companyUrl
       ORDER BY visits DESC
-      LIMIT ?
+      LIMIT ${Math.min(options.limit, 200)}
     `
     
-    const visitorParams = [`%${options.website_domain}%`, options.limit]
+    const visitorParams = [`%${options.website_domain}%`]
     const visitorResult = await mysqlConnection.query(visitorQuery, visitorParams)
     
     const correlations = []

@@ -169,10 +169,16 @@ export async function getVisitorAnalytics(options: VisitorAnalyticsOptions = {})
       ${whereClause}
       GROUP BY DATE(visit_first_action_time)
       ORDER BY visit_date DESC
-      LIMIT ?
+      LIMIT ${Math.min(limit, 100)}
     `
     
-    parameters.push(Math.min(limit, 200))
+    // Note: LIMIT uses direct substitution, no parameter needed
+    
+    // DEBUG: Print exact query and parameters before execution
+    console.log('🔍 DEBUG get_visitor_analytics MAIN QUERY:')
+    console.log('   Query:', query)
+    console.log('   Parameters:', JSON.stringify(parameters))
+    console.log('   Parameter types:', parameters.map(p => typeof p))
     
     const result = await connection.query(query, parameters)
     
@@ -188,8 +194,15 @@ export async function getVisitorAnalytics(options: VisitorAnalyticsOptions = {})
       ${whereClause}
     `
     
-    // Create separate parameters array for summary query (exclude the LIMIT parameter)
-    const summaryParameters = site_id ? [site_id] : []
+    // Create parameters array for summary query (no LIMIT parameter to exclude)
+    const summaryParameters = parameters
+    
+    // DEBUG: Print exact summary query and parameters before execution
+    console.log('🔍 DEBUG get_visitor_analytics SUMMARY QUERY:')
+    console.log('   Query:', summaryQuery)
+    console.log('   Parameters:', JSON.stringify(summaryParameters))
+    console.log('   Parameter types:', summaryParameters.map(p => typeof p))
+    
     const summaryResult = await connection.query(summaryQuery, summaryParameters)
     
     // Convert null values to numbers for validation
@@ -296,10 +309,10 @@ export async function getConversionMetrics(options: ConversionMetricsOptions = {
       ${whereClause}
       GROUP BY DATE(c.server_time), c.idgoal, g.name, g.description, g.revenue
       ORDER BY conversion_date DESC, total_conversions DESC
-      LIMIT ?
+      LIMIT ${Math.min(limit, 100)}
     `
     
-    parameters.push(Math.min(limit, 100))
+    // Note: LIMIT uses direct substitution, no parameter needed
     
     const result = await connection.query(query, parameters)
     
@@ -407,7 +420,7 @@ export async function getContentPerformance(options: ContentPerformanceOptions =
           AND a.type = 1
           GROUP BY lva.idaction_url, a.name, a.url_prefix
           ORDER BY page_views DESC
-          LIMIT ?
+          LIMIT ${Math.min(limit, 100)}
         `
         break
         
@@ -425,7 +438,7 @@ export async function getContentPerformance(options: ContentPerformanceOptions =
           ${whereClause.replace('lva.', 'lv.')}
           GROUP BY lv.visit_entry_idaction_url, a.name
           ORDER BY entries DESC
-          LIMIT ?
+          LIMIT ${Math.min(limit, 100)}
         `
         break
         
@@ -442,7 +455,7 @@ export async function getContentPerformance(options: ContentPerformanceOptions =
           ${whereClause.replace('lva.', 'lv.')}
           GROUP BY lv.visit_exit_idaction_url, a.name
           ORDER BY exits DESC
-          LIMIT ?
+          LIMIT ${Math.min(limit, 100)}
         `
         break
         
@@ -450,7 +463,7 @@ export async function getContentPerformance(options: ContentPerformanceOptions =
         throw new Error(`Unknown content type: ${content_type}`)
     }
     
-    parameters.push(Math.min(limit, 100))
+    // Note: LIMIT uses direct substitution, no parameter needed
     
     const result = await connection.query(query, parameters)
     
@@ -579,10 +592,10 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
         JSON_EXTRACT(vesp.companyDetails, '$.revenue'),
         JSON_EXTRACT(vesp.companyDetails, '$.employees')
       ORDER BY total_visits DESC, last_visit DESC
-      LIMIT ?
+      LIMIT ${Math.min(limit, 100)}
     `
     
-    parameters.push(Math.min(limit, 100))
+    // Note: LIMIT uses direct substitution, no parameter needed
     
     const result = await connection.query(query, parameters)
     
@@ -601,12 +614,8 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
       ${whereClause}
     `
     
-    // Create separate parameters array for summary query (exclude the LIMIT parameter)
-    const summaryParameters = []
-    if (site_id) summaryParameters.push(site_id)
-    if (company_name) summaryParameters.push(`%${company_name}%`)
-    if (domain) summaryParameters.push(`%${domain}%`)
-    if (country) summaryParameters.push(country)
+    // Create parameters array for summary query (no LIMIT parameter to exclude)
+    const summaryParameters = parameters
     const summaryResult = await connection.query(summaryQuery, summaryParameters)
     
     return {

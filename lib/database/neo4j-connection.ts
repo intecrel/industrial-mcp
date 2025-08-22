@@ -91,19 +91,24 @@ export class Neo4jConnection extends BaseDatabaseConnection {
     }
   }
 
-  async query<T = any>(cypher: string, params?: any[]): Promise<QueryResult<T>> {
+  async query<T = any>(cypher: string, params?: any[] | Record<string, any>): Promise<QueryResult<T>> {
     this.validateConnection()
 
     try {
       // Security: Validate and sanitize query
       const sanitizedQuery = this.sanitizeQuery(cypher)
-      const sanitizedParams = this.sanitizeParams(params)
-      
+      // Accept both array and object for params
+      let parameters: Record<string, any> = {}
+      if (Array.isArray(params)) {
+        parameters = this.convertParams(params)
+      } else if (params && typeof params === 'object') {
+        parameters = params
+      }
+
       // Security: Enforce read-only operations for security
       this.validateQuerySecurity(sanitizedQuery)
 
       const session = this.getSession()
-      const parameters = this.convertParams(sanitizedParams)
 
       const result = this._inTransaction && this.transaction
         ? await this.transaction.run(sanitizedQuery, parameters)
