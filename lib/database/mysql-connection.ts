@@ -276,7 +276,7 @@ export class MySQLConnection extends BaseDatabaseConnection {
     }
   }
 
-  async query<T = any>(sql: string, params?: any[]): Promise<QueryResult<T>> {
+  async query<T = any>(sql: string, params?: any[] | Record<string, any>): Promise<QueryResult<T>> {
     this.validateConnection()
 
     try {
@@ -284,8 +284,14 @@ export class MySQLConnection extends BaseDatabaseConnection {
         throw new Error('MySQL pool not initialized')
       }
 
-      const sanitizedParams = this.sanitizeParams(params)
-      
+      let sanitizedParams: any[] = []
+      if (Array.isArray(params)) {
+        sanitizedParams = this.sanitizeParams(params)
+      } else if (params && typeof params === 'object') {
+        // Convert object to array of values (order by key name)
+        sanitizedParams = this.sanitizeParams(Object.values(params))
+      }
+
       // Execute query using pool
       const [rows, fields] = await this.pool.execute(sql, sanitizedParams) as [any[], mysql.FieldPacket[]]
       

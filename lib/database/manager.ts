@@ -174,7 +174,7 @@ export class DatabaseManager {
    */
   async query<T = any>(
     query: string,
-    params?: any[],
+    params?: any[] | Record<string, any>,
     connectionName?: string
   ): Promise<QueryResult<T>> {
     const connection = this.getConnection(connectionName)
