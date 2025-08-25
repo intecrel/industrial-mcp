@@ -78,7 +78,17 @@ class RedisStorageAdapter implements StorageAdapter {
         return null;
       }
       
-      const client = JSON.parse(data as string) as OAuthClient;
+      // Handle both string and object responses from Upstash Redis
+      let client: OAuthClient;
+      if (typeof data === 'string') {
+        client = JSON.parse(data) as OAuthClient;
+      } else if (typeof data === 'object') {
+        client = data as OAuthClient;
+      } else {
+        console.error(`❌ Unexpected Redis data type: ${typeof data}`);
+        return null;
+      }
+      
       console.log(`📦 Client retrieved from Redis: ${clientId}`);
       return client;
     } catch (error) {
@@ -98,7 +108,12 @@ class RedisStorageAdapter implements StorageAdapter {
       for (const key of keys) {
         const data = await this.redis.get(key);
         if (data) {
-          clients.push(JSON.parse(data as string));
+          // Handle both string and object responses from Upstash Redis
+          if (typeof data === 'string') {
+            clients.push(JSON.parse(data) as OAuthClient);
+          } else if (typeof data === 'object') {
+            clients.push(data as OAuthClient);
+          }
         }
       }
       
@@ -137,7 +152,17 @@ class RedisStorageAdapter implements StorageAdapter {
         return null;
       }
       
-      const authData = JSON.parse(data as string) as AuthCodeData;
+      // Handle both string and object responses from Upstash Redis
+      let authData: AuthCodeData;
+      if (typeof data === 'string') {
+        authData = JSON.parse(data) as AuthCodeData;
+      } else if (typeof data === 'object') {
+        authData = data as AuthCodeData;
+      } else {
+        console.error(`❌ Unexpected Redis auth code data type: ${typeof data}`);
+        return null;
+      }
+      
       console.log(`🔐 Auth code retrieved from Redis`);
       return authData;
     } catch (error) {
