@@ -145,7 +145,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   // Handle POST requests that might be MCP calls to the root
-  console.log('🔄 POST request to root - checking if this is MCP call');
+  console.log('🔄 ROOT ROUTE POST request received - checking if this is MCP call');
+  console.log('🔍 ROOT ROUTE - URL:', request.url);
+  console.log('🔍 ROOT ROUTE - pathname:', request.nextUrl.pathname);
   
   const baseUrl = request.nextUrl.origin;
   const authHeader = request.headers.get('authorization');

@@ -1549,6 +1549,14 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
     const startTime = Date.now();
     let response: Response;
     
+    // DEBUG: Log transport parameter to understand routing
+    console.log(`🚀 [transport] handler called with:`, {
+      method: request.method,
+      url: request.url,
+      transport: context?.params?.transport,
+      pathname: new URL(request.url).pathname
+    });
+    
     try {
       // Security: Store request context for logging
       const clientIP = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
