@@ -80,18 +80,18 @@ async function handleRootGETInline(request: Request): Promise<Response> {
       protocol_version: "2025-03-26",
       server_name: "Industrial MCP Server", 
       server_version: "2.0.0",
-      mcp_endpoint: `${baseUrl}/`,
+      mcp_endpoint: `${baseUrl}/api/mcp`,
       authentication: {
         type: "bearer_token",
         required: true
       },
       transports: [{
         type: "http",
-        url: `${baseUrl}/`,
+        url: `${baseUrl}/api/mcp`,
         methods: ["GET", "POST", "OPTIONS"],
         authentication: "bearer"
       }],
-      instructions: "This endpoint accepts MCP JSON-RPC calls directly with Bearer token authentication"
+      instructions: "Use /api/mcp endpoint for MCP JSON-RPC calls with Bearer token authentication"
     }, {
       status: 200,
       headers: {

@@ -10,8 +10,10 @@ import { applyCORSHeaders } from '../../lib/security/cors-config';
 export async function GET(request: NextRequest) {
   const baseUrl = request.nextUrl.origin;
   
-  console.log('🔍 Root MCP discovery endpoint called');
+  console.log('🔍 ORIGINAL ROOT ROUTE GET endpoint called');
   console.log(`📋 Origin: ${baseUrl}`);
+  console.log(`🔍 ORIGINAL ROOT ROUTE GET - URL:`, request.url);
+  console.log(`🔍 ORIGINAL ROOT ROUTE GET - pathname:`, request.nextUrl.pathname);
   console.log(`📋 User-Agent: ${request.headers.get('user-agent')}`);
   
   // Check if this looks like a Claude.ai request
@@ -40,8 +42,8 @@ export async function GET(request: NextRequest) {
       server_name: "Industrial MCP Server",
       server_version: "2.0.0",
       
-      // Tell Claude.ai this root endpoint accepts MCP calls directly
-      mcp_endpoint: `${baseUrl}/`,
+      // Tell Claude.ai the correct MCP endpoint
+      mcp_endpoint: `${baseUrl}/api/mcp`,
       authentication: {
         type: "bearer_token",
         required: true
@@ -51,13 +53,13 @@ export async function GET(request: NextRequest) {
       transports: [
         {
           type: "http",
-          url: `${baseUrl}/`,
+          url: `${baseUrl}/api/mcp`,
           methods: ["GET", "POST", "OPTIONS"],
           authentication: "bearer"
         }
       ],
       
-      instructions: "This endpoint accepts MCP JSON-RPC calls directly with Bearer token authentication"
+      instructions: "Use /api/mcp endpoint for MCP JSON-RPC calls with Bearer token authentication"
     }, {
       status: 200,
       headers: {
@@ -145,9 +147,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   // Handle POST requests that might be MCP calls to the root
-  console.log('🔄 ROOT ROUTE POST request received - checking if this is MCP call');
-  console.log('🔍 ROOT ROUTE - URL:', request.url);
-  console.log('🔍 ROOT ROUTE - pathname:', request.nextUrl.pathname);
+  console.log('🔄 ORIGINAL ROOT ROUTE POST request received - checking if this is MCP call');
+  console.log('🔍 ORIGINAL ROOT ROUTE - URL:', request.url);
+  console.log('🔍 ORIGINAL ROOT ROUTE - pathname:', request.nextUrl.pathname);
+  console.log('🔍 ORIGINAL ROOT ROUTE - method:', request.method);
   
   const baseUrl = request.nextUrl.origin;
   const authHeader = request.headers.get('authorization');

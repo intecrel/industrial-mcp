@@ -66,8 +66,8 @@ async function handleRootGET(nextRequest: NextRequest): Promise<Response> {
       server_name: "Industrial MCP Server",
       server_version: "2.0.0",
       
-      // Tell Claude.ai this root endpoint accepts MCP calls directly
-      mcp_endpoint: `${baseUrl}/`,
+      // Tell Claude.ai the correct MCP endpoint
+      mcp_endpoint: `${baseUrl}/api/mcp`,
       authentication: {
         type: "bearer_token",
         required: true
@@ -77,13 +77,13 @@ async function handleRootGET(nextRequest: NextRequest): Promise<Response> {
       transports: [
         {
           type: "http",
-          url: `${baseUrl}/`,
+          url: `${baseUrl}/api/mcp`,
           methods: ["GET", "POST", "OPTIONS"],
           authentication: "bearer"
         }
       ],
       
-      instructions: "This endpoint accepts MCP JSON-RPC calls directly with Bearer token authentication"
+      instructions: "Use /api/mcp endpoint for MCP JSON-RPC calls with Bearer token authentication"
     }, {
       status: 200,
       headers: {
