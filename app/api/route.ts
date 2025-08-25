@@ -29,35 +29,40 @@ export async function GET(request: NextRequest) {
   
   console.log(`🔍 Root discovery - Auth header: ${hasBearer ? 'Bearer token present' : 'No Bearer token'}`);
   
-  // If Claude.ai has completed OAuth (has Bearer token), redirect to MCP endpoint
+  // If Claude.ai has completed OAuth (has Bearer token), provide MCP discovery response
   if (hasBearer && isClaudeAI) {
-    console.log('🔄 Claude.ai has Bearer token - redirecting to MCP endpoint');
+    console.log('🔄 Claude.ai has Bearer token - providing MCP discovery response');
     
-    // Return MCP protocol response that tells Claude.ai to use Bearer auth at /api/mcp
+    // Return discovery information that tells Claude.ai this is the MCP endpoint
     return NextResponse.json({
-      jsonrpc: "2.0",
-      result: {
-        protocolVersion: "2025-03-26",
-        capabilities: {
-          tools: {},
-          resources: {},
-          prompts: {}
-        },
-        serverInfo: {
-          name: "Industrial MCP Server",
-          version: "2.0.0"
-        },
-        // CRITICAL: Tell Claude.ai where to make authenticated MCP calls
-        _mcp_endpoint_redirect: `${baseUrl}/api/mcp`,
-        _authentication_method: "bearer_token",
-        _instructions: "Use Bearer token from OAuth at /api/mcp endpoint"
-      }
+      // Standard MCP discovery format
+      protocol_version: "2025-03-26",
+      server_name: "Industrial MCP Server",
+      server_version: "2.0.0",
+      
+      // Tell Claude.ai this root endpoint accepts MCP calls directly
+      mcp_endpoint: `${baseUrl}/`,
+      authentication: {
+        type: "bearer_token",
+        required: true
+      },
+      
+      // Transport information
+      transports: [
+        {
+          type: "http",
+          url: `${baseUrl}/`,
+          methods: ["GET", "POST", "OPTIONS"],
+          authentication: "bearer"
+        }
+      ],
+      
+      instructions: "This endpoint accepts MCP JSON-RPC calls directly with Bearer token authentication"
     }, {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Location': `${baseUrl}/api/mcp` // HTTP redirect header
+        'Access-Control-Allow-Origin': '*'
       }
     });
   }
@@ -147,10 +152,28 @@ export async function POST(request: NextRequest) {
   const hasBearer = authHeader && authHeader.startsWith('Bearer ');
   
   console.log(`📋 POST to root - Bearer token: ${hasBearer ? 'present' : 'missing'}`);
+  console.log(`📋 Request headers:`, {
+    'content-type': request.headers.get('content-type'),
+    'user-agent': request.headers.get('user-agent'),
+    'accept': request.headers.get('accept'),
+    'origin': request.headers.get('origin')
+  });
   
   // Check if this is an MCP request body
   try {
-    const body = await request.json();
+    // Clone the request to avoid consuming the body stream
+    const requestClone = request.clone();
+    const bodyText = await requestClone.text();
+    console.log(`📋 POST body received: ${bodyText.substring(0, 200)}${bodyText.length > 200 ? '...' : ''}`);
+    
+    if (!bodyText.trim()) {
+      console.log('⚠️ Empty POST body received');
+      throw new Error('Empty body');
+    }
+
+    const body = JSON.parse(bodyText);
+    console.log(`📋 Parsed JSON body:`, { jsonrpc: body?.jsonrpc, method: body?.method, id: body?.id });
+    
     if (body && body.jsonrpc === "2.0") {
       console.log(`📡 MCP JSON-RPC call detected: ${body.method || 'unknown method'}`);
       
@@ -169,32 +192,72 @@ export async function POST(request: NextRequest) {
         headers['Authorization'] = authHeader;
       }
       
-      const mcpResponse = await fetch(`${baseUrl}/api/mcp`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body)
-      });
+      console.log(`📋 Forwarding headers:`, Object.keys(headers));
       
-      const responseData = await mcpResponse.text(); // Use text() for SSE responses
-      console.log(`✅ Proxied MCP call: ${body.method} - Status: ${mcpResponse.status}`);
-      
-      const response = new Response(responseData, {
-        status: mcpResponse.status,
-        headers: {
-          'Content-Type': mcpResponse.headers.get('Content-Type') || 'application/json',
-          'Cache-Control': 'no-cache'
-        }
-      });
-      applyCORSHeaders(request, response, process.env.NODE_ENV as any);
-      return response;
+      try {
+        const mcpResponse = await fetch(`${baseUrl}/api/mcp`, {
+          method: 'POST',
+          headers,
+          body: bodyText // Use original body text
+        });
+        
+        const responseData = await mcpResponse.text();
+        console.log(`✅ Proxied MCP call: ${body.method} - Status: ${mcpResponse.status}`);
+        console.log(`📋 Response data: ${responseData.substring(0, 200)}${responseData.length > 200 ? '...' : ''}`);
+        
+        const response = new Response(responseData, {
+          status: mcpResponse.status,
+          headers: {
+            'Content-Type': mcpResponse.headers.get('Content-Type') || 'application/json',
+            'Cache-Control': 'no-cache'
+          }
+        });
+        applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+        return response;
+      } catch (fetchError) {
+        console.error('❌ Error forwarding to /api/mcp:', fetchError);
+        throw fetchError;
+      }
+    } else {
+      console.log(`📝 Not an MCP request - jsonrpc: ${body?.jsonrpc}, method: ${body?.method}`);
     }
   } catch (error) {
-    console.log('📝 Non-JSON POST request to root');
+    console.error('❌ Error processing POST request to root:', error);
+    console.log('📝 Non-JSON or invalid POST request to root');
   }
   
   // Fallback for non-MCP POST requests
+  console.log('⚠️ POST request to root was not a valid MCP JSON-RPC call');
+  
+  // Check if this might be a Claude.ai request that should be redirected
+  const userAgent = request.headers.get('user-agent') || '';
+  const isClaudeAI = userAgent.toLowerCase().includes('claude') || 
+                     userAgent.toLowerCase().includes('anthropic');
+  
+  if (isClaudeAI && hasBearer) {
+    console.log('🔄 Claude.ai POST with Bearer token - suggesting /api/mcp endpoint');
+    const response = NextResponse.json({
+      error: "MCP calls should use JSON-RPC 2.0 format",
+      suggestion: "This endpoint accepts MCP JSON-RPC calls with Bearer token",
+      alternative_endpoint: `${baseUrl}/api/mcp`,
+      example: {
+        jsonrpc: "2.0",
+        method: "initialize",
+        params: {},
+        id: 1
+      }
+    }, {
+      status: 400,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+    return response;
+  }
+  
   const response = NextResponse.json({
-    message: "Use GET for MCP discovery or POST to /api/mcp for MCP calls"
+    message: "Use GET for MCP discovery or POST with JSON-RPC 2.0 format"
   }, {
     status: 405,
     headers: {
