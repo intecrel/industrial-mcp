@@ -301,18 +301,18 @@ class InMemoryStorageAdapter implements StorageAdapter {
     const now = Date.now();
     
     // Clean expired auth codes
-    for (const [code, entry] of this.authCodes.entries()) {
+    Array.from(this.authCodes.entries()).forEach(([code, entry]) => {
       if (now > entry.expires) {
         this.authCodes.delete(code);
       }
-    }
+    });
     
     // Clean expired rate limits
-    for (const [key, entry] of this.rateLimits.entries()) {
+    Array.from(this.rateLimits.entries()).forEach(([key, entry]) => {
       if (now > entry.expires) {
         this.rateLimits.delete(key);
       }
-    }
+    });
     
     console.log('🧹 In-memory cleanup completed');
   }
