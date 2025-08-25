@@ -61,3 +61,29 @@ export const validateOAuthConfig = (config: OAuthConfig): void => {
 export const isOAuthEnabled = (): boolean => {
   return process.env.ENABLE_OAUTH !== 'false'; // Enabled by default
 };
+
+/**
+ * Check if Redis storage is enabled
+ */
+export const isRedisEnabled = (): boolean => {
+  return process.env.ENABLE_REDIS_STORAGE === 'true' && 
+         !!process.env.UPSTASH_REDIS_REST_URL && 
+         !!process.env.UPSTASH_REDIS_REST_TOKEN;
+};
+
+/**
+ * Get environment type
+ */
+export const getEnvironmentType = (): 'development' | 'preview' | 'production' => {
+  if (process.env.NODE_ENV === 'development') {
+    return 'development';
+  }
+  
+  // Vercel preview deployments
+  if (process.env.VERCEL_ENV === 'preview') {
+    return 'preview';
+  }
+  
+  // Production deployment
+  return 'production';
+};
