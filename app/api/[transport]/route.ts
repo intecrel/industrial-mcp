@@ -1557,6 +1557,18 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
       pathname: new URL(request.url).pathname
     });
     
+    // CRITICAL FIX: Handle root API calls when transport is empty/undefined
+    const transport = context?.params?.transport;
+    const url = new URL(request.url);
+    
+    if (!transport || transport === '' || url.pathname === '/api' || url.pathname === '/api/') {
+      console.log('🔄 [transport] handling ROOT API call - delegating to root MCP logic');
+      
+      // Import and use the root route logic
+      const { handleRootRequest } = await import('../root-handler');
+      return await handleRootRequest(request);
+    }
+    
     try {
       // Security: Store request context for logging
       const clientIP = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
