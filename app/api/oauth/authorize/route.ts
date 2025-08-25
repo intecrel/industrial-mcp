@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateClient, validateRedirectUri } from '../../../../lib/oauth/clients';
 import { validateScopes } from '../../../../lib/oauth/scopes';
 import { isValidCodeChallenge } from '../../../../lib/oauth/pkce';
+import { getCurrentDeploymentUrl } from '../../../../lib/oauth/config';
 
 // Force dynamic rendering for OAuth routes
 export const dynamic = 'force-dynamic';
@@ -79,10 +80,8 @@ export async function GET(request: NextRequest) {
     
     // Redirect to consent screen for user authorization
     try {
-      // Get the base URL for the consent page
-      const baseUrl = process.env.NODE_ENV === 'development'
-        ? 'http://localhost:3000'
-        : 'https://industrial-mcp-delta.vercel.app';
+      // Get the current deployment URL dynamically
+      const baseUrl = getCurrentDeploymentUrl();
       
       // Construct consent URL with OAuth parameters
       const consentUrl = new URL(`${baseUrl}/auth/consent`);
