@@ -19,6 +19,16 @@ export function middleware(request: NextRequest) {
 
   // Check verification status
   const isVerified = request.cookies.get('mcp-verified')?.value === 'true'
+  
+  // Check for OAuth Bearer token (for Claude.ai and other OAuth clients)
+  const authHeader = request.headers.get('authorization')
+  const hasBearer = authHeader && authHeader.startsWith('Bearer ')
+  
+  // Allow root endpoint for OAuth Bearer token requests (MCP calls from Claude.ai)
+  if (request.nextUrl.pathname === '/' && hasBearer) {
+    console.log('🔓 Allowing root endpoint access with Bearer token')
+    return NextResponse.next()
+  }
 
   // Allow home page only if not verified
   if (request.nextUrl.pathname === '/' && !isVerified) {
