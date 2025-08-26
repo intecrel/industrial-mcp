@@ -27,6 +27,7 @@ export function middleware(request: NextRequest) {
   // CRITICAL FIX: Handle MCP POST requests to root path
   if (request.nextUrl.pathname === '/' && request.method === 'POST' && hasBearer) {
     console.log('🔓 Allowing MCP POST request to root with Bearer token')
+    console.log(`🔍 Rewriting POST / to /api/mcp for User-Agent: ${request.headers.get('user-agent')}`)
     // Rewrite the request to the MCP endpoint
     return NextResponse.rewrite(new URL('/api/mcp', request.url))
   }

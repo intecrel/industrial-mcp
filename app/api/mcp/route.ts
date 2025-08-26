@@ -35,9 +35,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('📋 MCP Request:', { method: body.method, id: body.id });
     
+    // Quick test response for debugging
+    if (body.method === 'ping') {
+      console.log('🏓 Ping received - responding immediately');
+      return NextResponse.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { message: "pong", timestamp: new Date().toISOString() }
+      });
+    }
+    
     // Handle MCP initialize method with proper response format
     if (body.method === 'initialize') {
       console.log('🔧 Handling MCP initialize request');
+      console.log('📋 Advertising tool capabilities to Claude.ai');
       return NextResponse.json({
         jsonrpc: "2.0",
         id: body.id,
@@ -45,7 +56,7 @@ export async function POST(request: NextRequest) {
           protocolVersion: "2025-03-26",
           capabilities: {
             tools: {
-              listChanged: false
+              listChanged: false  // We don't dynamically change tools
             },
             resources: {
               subscribe: false,
@@ -66,8 +77,71 @@ export async function POST(request: NextRequest) {
     
     // Handle tools/list method
     if (body.method === 'tools/list') {
-      console.log('🔧 Handling tools/list request - returning 17 tools');
-      console.log('📋 Tools being returned: echo, explore_database, query_database, analyze_data, get_cloud_sql_status, get_cloud_sql_info, query_knowledge_graph, get_organizational_structure, find_capability_paths, get_knowledge_graph_stats, query_matomo_database, get_visitor_analytics, get_conversion_metrics, get_content_performance, get_company_intelligence, get_unified_dashboard_data, correlate_operational_relationships');
+      const startTime = Date.now();
+      console.log('🔧 Handling tools/list request - returning simplified tools for timeout debugging');
+      
+      // Simplified response to test timeout issues
+      const response = NextResponse.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          tools: [
+            {
+              name: "echo",
+              description: "Echo back the provided message",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  message: {
+                    type: "string",
+                    description: "The message to echo back"
+                  }
+                },
+                required: ["message"]
+              }
+            },
+            {
+              name: "explore_database",
+              description: "Explore database structure - list tables, inspect schemas, and discover data",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  action: {
+                    type: "string",
+                    enum: ["list_tables", "describe_table", "sample_data"],
+                    description: "What to explore: list_tables, describe_table, or sample_data"
+                  }
+                },
+                required: ["action"]
+              }
+            },
+            {
+              name: "query_knowledge_graph",
+              description: "Execute parameterized Cypher queries against the knowledge graph",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  query: {
+                    type: "string",
+                    description: "Cypher query to execute"
+                  }
+                },
+                required: ["query"]
+              }
+            }
+          ]
+        }
+      });
+      
+      const endTime = Date.now();
+      console.log(`✅ Returning simplified tools/list response with 3 tools (took ${endTime - startTime}ms)`);
+      return response;
+    }
+    
+    // Handle full tools/list method (if we need it later)  
+    if (body.method === 'tools/list-full') {
+      const startTime = Date.now();
+      console.log('🔧 Handling FULL tools/list request - returning all 17 tools');
       
       const response = NextResponse.json({
         jsonrpc: "2.0",
@@ -463,7 +537,8 @@ export async function POST(request: NextRequest) {
         }
       });
       
-      console.log('✅ Returning tools/list response with', 17, 'tools');
+      const endTime = Date.now();
+      console.log(`✅ Returning FULL tools/list response with 17 tools (took ${endTime - startTime}ms)`);
       return response;
     }
     
