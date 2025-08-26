@@ -1754,12 +1754,18 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
     const transport = context?.params?.transport;
     const url = new URL(request.url);
     
-    if (!transport || transport === '' || url.pathname === '/api' || url.pathname === '/api/') {
+    console.log(`🚀 [transport] handler called with: transport="${transport}", pathname="${url.pathname}"`);
+    
+    // Only handle root requests, not /api/mcp which should use the MCP adapter
+    if ((!transport || transport === '' || url.pathname === '/api' || url.pathname === '/api/') && 
+        url.pathname !== '/api/mcp') {
       console.log('🔄 [transport] handling ROOT API call - processing directly');
       
       // Handle root requests directly without dynamic import
       return await handleRootRequestInline(request);
     }
+    
+    console.log(`🔧 [transport] using MCP adapter for transport="${transport}"`);
     
     try {
       // Security: Store request context for logging
