@@ -34,6 +34,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     console.log('📋 MCP Request:', { method: body.method, id: body.id });
+    console.log('🔍 Full request body:', JSON.stringify(body, null, 2));
+    
+    // Log every single method we receive
+    console.log(`🎯 Processing MCP method: ${body.method}`);
     
     // Quick test response for debugging
     if (body.method === 'ping') {
@@ -55,16 +59,9 @@ export async function POST(request: NextRequest) {
         result: {
           protocolVersion: "2025-03-26",
           capabilities: {
-            tools: {
-              listChanged: false  // We don't dynamically change tools
-            },
-            resources: {
-              subscribe: false,
-              listChanged: false
-            },
-            prompts: {
-              listChanged: false
-            },
+            tools: {},
+            resources: {},
+            prompts: {},
             logging: {}
           },
           serverInfo: {
@@ -984,6 +981,7 @@ export async function POST(request: NextRequest) {
     
     // Handle other MCP methods with generic response
     console.log('📝 Handling generic MCP method:', body.method);
+    console.log('❓ UNHANDLED METHOD - This might be tools/list or another important method!');
     return NextResponse.json({
       jsonrpc: "2.0",
       id: body.id,
