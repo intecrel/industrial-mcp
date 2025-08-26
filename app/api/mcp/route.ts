@@ -61,9 +61,19 @@ export async function POST(request: NextRequest) {
         result: {
           protocolVersion: "2025-06-18",
           capabilities: {
-            tools: {},  // Empty object indicates tools are supported
-            resources: {},  // Empty object indicates resources are supported  
-            prompts: {},   // Empty object indicates prompts are supported
+            tools: {
+              echo: {
+                description: "Echo back messages for testing connectivity",
+              },
+              explore_database: {
+                description: "Explore database structure and discover data",
+              },
+              query_knowledge_graph: {
+                description: "Execute Cypher queries against the knowledge graph",
+              }
+            },
+            resources: {},
+            prompts: {},
             logging: {}
           },
           serverInfo: {
@@ -976,6 +986,15 @@ export async function POST(request: NextRequest) {
     // Handle notifications/initialized method
     if (body.method === 'notifications/initialized') {
       console.log('🔧 Handling notifications/initialized');
+      console.log('🎯 INITIALIZATION COMPLETE - Claude.ai should now call tools/list');
+      console.log('⏱️  Starting 10-second countdown to detect tools/list call...');
+      
+      // Set a timer to check if tools/list gets called within 10 seconds
+      setTimeout(() => {
+        console.log('⏱️  10 seconds elapsed since initialization - checking if tools/list was called');
+        console.log('🔍 If no tools/list call logged above this message, then the issue is confirmed');
+      }, 10000);
+      
       return NextResponse.json({
         jsonrpc: "2.0",
         id: body.id,
