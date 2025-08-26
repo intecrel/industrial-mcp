@@ -30,12 +30,101 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('📋 MCP Request:', { method: body.method, id: body.id });
     
+    // Handle MCP initialize method with proper response format
+    if (body.method === 'initialize') {
+      console.log('🔧 Handling MCP initialize request');
+      return NextResponse.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          protocolVersion: "2025-03-26",
+          capabilities: {
+            tools: {
+              listChanged: false
+            },
+            resources: {
+              subscribe: false,
+              listChanged: false
+            },
+            prompts: {
+              listChanged: false
+            },
+            logging: {}
+          },
+          serverInfo: {
+            name: "Industrial MCP Server",
+            version: "2.0.0"
+          }
+        }
+      });
+    }
+    
+    // Handle tools/list method
+    if (body.method === 'tools/list') {
+      console.log('🔧 Handling tools/list request');
+      return NextResponse.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          tools: [
+            {
+              name: "echo",
+              description: "Echo back the provided message (test tool)",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  message: {
+                    type: "string",
+                    description: "The message to echo back"
+                  }
+                },
+                required: ["message"]
+              }
+            }
+          ]
+        }
+      });
+    }
+    
+    // Handle tools/call method
+    if (body.method === 'tools/call') {
+      console.log('🔧 Handling tools/call request:', body.params?.name);
+      const toolName = body.params?.name;
+      const args = body.params?.arguments || {};
+      
+      if (toolName === 'echo') {
+        return NextResponse.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: {
+            content: [
+              {
+                type: "text",
+                text: `Echo: ${args.message || 'No message provided'}`
+              }
+            ]
+          }
+        });
+      }
+      
+      // Unknown tool
+      return NextResponse.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        error: {
+          code: -32601,
+          message: `Unknown tool: ${toolName}`
+        }
+      });
+    }
+    
+    // Handle other MCP methods with generic response
+    console.log('📝 Handling generic MCP method:', body.method);
     return NextResponse.json({
       jsonrpc: "2.0",
       id: body.id,
       result: {
-        message: "MCP endpoint working - no more infinite loop!",
-        method: body.method,
+        message: `MCP method ${body.method} received successfully - server is working!`,
         timestamp: new Date().toISOString()
       }
     });
