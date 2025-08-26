@@ -863,6 +863,40 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    // Handle resources/list method
+    if (body.method === 'resources/list') {
+      console.log('🔧 Handling resources/list request');
+      return NextResponse.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          resources: []
+        }
+      });
+    }
+    
+    // Handle prompts/list method
+    if (body.method === 'prompts/list') {
+      console.log('🔧 Handling prompts/list request');
+      return NextResponse.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          prompts: []
+        }
+      });
+    }
+    
+    // Handle notifications/initialized method
+    if (body.method === 'notifications/initialized') {
+      console.log('🔧 Handling notifications/initialized');
+      return NextResponse.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {}
+      });
+    }
+    
     // Handle other MCP methods with generic response
     console.log('📝 Handling generic MCP method:', body.method);
     return NextResponse.json({
