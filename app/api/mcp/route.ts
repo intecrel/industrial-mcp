@@ -52,16 +52,25 @@ export async function POST(request: NextRequest) {
     // Handle MCP initialize method with proper response format
     if (body.method === 'initialize') {
       console.log('🔧 Handling MCP initialize request');
+      console.log(`📋 Claude.ai protocol version: ${body.params?.protocolVersion}`);
+      console.log('📋 Responding with matching protocol version: 2025-06-18');
       console.log('📋 Advertising tool capabilities to Claude.ai');
       return NextResponse.json({
         jsonrpc: "2.0",
         id: body.id,
         result: {
-          protocolVersion: "2025-03-26",
+          protocolVersion: "2025-06-18",
           capabilities: {
-            tools: {},
-            resources: {},
-            prompts: {},
+            tools: {
+              listChanged: false
+            },
+            resources: {
+              subscribe: false,
+              listChanged: false
+            },
+            prompts: {
+              listChanged: false
+            },
             logging: {}
           },
           serverInfo: {
