@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
     if (body.method === 'initialize') {
       console.log('🔧 Handling MCP initialize request');
       console.log(`📋 Claude.ai protocol version: ${body.params?.protocolVersion}`);
+      console.log(`📋 Claude.ai capabilities: ${JSON.stringify(body.params?.capabilities)}`);
+      console.log(`📋 Claude.ai client info: ${JSON.stringify(body.params?.clientInfo)}`);
       console.log('📋 Responding with matching protocol version: 2025-06-18');
       console.log('📋 Advertising tool capabilities to Claude.ai with explicit tool support');
       return NextResponse.json({
@@ -81,6 +83,14 @@ export async function POST(request: NextRequest) {
             version: "2.0.0"
           },
           instructions: "Industrial MCP server with Neo4j knowledge graph and MySQL analytics tools ready for use."
+        }
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         }
       });
     }
@@ -141,6 +151,12 @@ export async function POST(request: NextRequest) {
               }
             }
           ]
+        }
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Access-Control-Allow-Origin': '*',
         }
       });
       
@@ -988,17 +1004,27 @@ export async function POST(request: NextRequest) {
       console.log('🔧 Handling notifications/initialized');
       console.log('🎯 INITIALIZATION COMPLETE - Claude.ai should now call tools/list');
       console.log('⏱️  Starting 10-second countdown to detect tools/list call...');
+      console.log('🔬 HYPOTHESIS: Claude.ai may only call tools/list on certain endpoint patterns');
+      console.log('🔬 Our endpoint: /api/mcp vs Working endpoint: /api/[transport] (dynamic route)');
       
       // Set a timer to check if tools/list gets called within 10 seconds
       setTimeout(() => {
         console.log('⏱️  10 seconds elapsed since initialization - checking if tools/list was called');
         console.log('🔍 If no tools/list call logged above this message, then the issue is confirmed');
+        console.log('🔬 Next test: Check if /api/[transport] endpoint gets tools/list calls');
       }, 10000);
       
+      // notifications/initialized is a notification, not a request, so no response needed
+      // But we'll send an empty response for compatibility
       return NextResponse.json({
         jsonrpc: "2.0",
-        id: body.id,
         result: {}
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Access-Control-Allow-Origin': '*',
+        }
       });
     }
     
