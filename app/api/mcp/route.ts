@@ -54,29 +54,23 @@ export async function POST(request: NextRequest) {
       console.log('🔧 Handling MCP initialize request');
       console.log(`📋 Claude.ai protocol version: ${body.params?.protocolVersion}`);
       console.log('📋 Responding with matching protocol version: 2025-06-18');
-      console.log('📋 Advertising tool capabilities to Claude.ai');
+      console.log('📋 Advertising tool capabilities to Claude.ai with explicit tool support');
       return NextResponse.json({
         jsonrpc: "2.0",
         id: body.id,
         result: {
           protocolVersion: "2025-06-18",
           capabilities: {
-            tools: {
-              listChanged: false
-            },
-            resources: {
-              subscribe: false,
-              listChanged: false
-            },
-            prompts: {
-              listChanged: false
-            },
+            tools: {},  // Empty object indicates tools are supported
+            resources: {},  // Empty object indicates resources are supported  
+            prompts: {},   // Empty object indicates prompts are supported
             logging: {}
           },
           serverInfo: {
             name: "Industrial MCP Server",
             version: "2.0.0"
-          }
+          },
+          instructions: "Industrial MCP server with Neo4j knowledge graph and MySQL analytics tools ready for use."
         }
       });
     }
@@ -84,6 +78,7 @@ export async function POST(request: NextRequest) {
     // Handle tools/list method
     if (body.method === 'tools/list') {
       const startTime = Date.now();
+      console.log('🎯🎯🎯 CLAUDE.AI IS CALLING TOOLS/LIST! - This is the key request we were waiting for!');
       console.log('🔧 Handling tools/list request - returning simplified tools for timeout debugging');
       
       // Simplified response to test timeout issues
