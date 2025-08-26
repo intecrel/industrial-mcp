@@ -26,6 +26,11 @@ export async function POST(request: NextRequest) {
   console.log(`📋 User-Agent: ${request.headers.get('user-agent')}`);
   console.log(`🔐 Auth: ${request.headers.get('authorization') ? 'Bearer token present' : 'No auth header'}`);
   
+  const url = new URL(request.url);
+  console.log(`🌐 Full URL: ${url.toString()}`);
+  console.log(`📍 Pathname: ${url.pathname}`);
+  console.log(`❓ Search params: ${url.search}`);
+  
   try {
     const body = await request.json();
     console.log('📋 MCP Request:', { method: body.method, id: body.id });
@@ -61,8 +66,10 @@ export async function POST(request: NextRequest) {
     
     // Handle tools/list method
     if (body.method === 'tools/list') {
-      console.log('🔧 Handling tools/list request');
-      return NextResponse.json({
+      console.log('🔧 Handling tools/list request - returning 17 tools');
+      console.log('📋 Tools being returned: echo, explore_database, query_database, analyze_data, get_cloud_sql_status, get_cloud_sql_info, query_knowledge_graph, get_organizational_structure, find_capability_paths, get_knowledge_graph_stats, query_matomo_database, get_visitor_analytics, get_conversion_metrics, get_content_performance, get_company_intelligence, get_unified_dashboard_data, correlate_operational_relationships');
+      
+      const response = NextResponse.json({
         jsonrpc: "2.0",
         id: body.id,
         result: {
@@ -455,6 +462,9 @@ export async function POST(request: NextRequest) {
           ]
         }
       });
+      
+      console.log('✅ Returning tools/list response with', 17, 'tools');
+      return response;
     }
     
     // Handle tools/call method
