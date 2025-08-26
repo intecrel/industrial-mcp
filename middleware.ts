@@ -24,7 +24,14 @@ export function middleware(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const hasBearer = authHeader && authHeader.startsWith('Bearer ')
   
-  // Allow root endpoint for OAuth Bearer token requests (MCP calls from Claude.ai)
+  // CRITICAL FIX: Handle MCP POST requests to root path
+  if (request.nextUrl.pathname === '/' && request.method === 'POST' && hasBearer) {
+    console.log('🔓 Allowing MCP POST request to root with Bearer token')
+    // Rewrite the request to the MCP endpoint
+    return NextResponse.rewrite(new URL('/api/mcp', request.url))
+  }
+  
+  // Allow root endpoint for OAuth Bearer token requests (GET for discovery)
   if (request.nextUrl.pathname === '/' && hasBearer) {
     console.log('🔓 Allowing root endpoint access with Bearer token')
     return NextResponse.next()
