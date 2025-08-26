@@ -27,10 +27,10 @@ export function middleware(request: NextRequest) {
   // CRITICAL FIX: Handle MCP POST requests to root path
   if (request.nextUrl.pathname === '/' && request.method === 'POST' && hasBearer) {
     console.log('🔓 Allowing MCP POST request to root with Bearer token')
-    console.log(`🔍 TESTING: Rewriting POST / to working /api/transport endpoint instead of custom /api/mcp`)
+    console.log(`🔍 FINAL TEST: Rewriting POST / to REAL Vercel MCP adapter at /api/mcp-transport`)
     console.log(`🔍 User-Agent: ${request.headers.get('user-agent')}`)
-    // TEST: Route to the working /api/[transport] endpoint instead of custom /api/mcp
-    return NextResponse.rewrite(new URL('/api/transport', request.url))
+    // FINAL TEST: Route to a direct MCP transport endpoint that uses Vercel adapter
+    return NextResponse.rewrite(new URL('/api/mcp-transport', request.url))
   }
   
   // Allow root endpoint for OAuth Bearer token requests (GET for discovery)
