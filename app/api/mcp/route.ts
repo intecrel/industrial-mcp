@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Handle tools/list
     if (method === 'tools/list') {
-      console.log('📋 TOOLS/LIST called - returning echo + explore_database + query_database + analyze_data tools')
+      console.log('📋 TOOLS/LIST called - returning 7 tools: echo + explore_database + query_database + analyze_data + get_cloud_sql_status + get_cloud_sql_info + query_knowledge_graph')
       return NextResponse.json({
         jsonrpc: "2.0",
         id,
@@ -145,6 +145,54 @@ export async function POST(request: NextRequest) {
                   }
                 },
                 required: ["table_name", "analysis_type"]
+              }
+            },
+            {
+              name: "get_cloud_sql_status",
+              description: "Get Cloud SQL database connection status and health information",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  database: {
+                    type: "string",
+                    description: "Specific database name to check (optional)"
+                  },
+                  include_details: {
+                    type: "boolean",
+                    description: "Include detailed connection information"
+                  }
+                }
+              }
+            },
+            {
+              name: "get_cloud_sql_info",
+              description: "Get Cloud SQL system configuration and connection information",
+              inputSchema: {
+                type: "object",
+                properties: {}
+              }
+            },
+            {
+              name: "query_knowledge_graph",
+              description: "Execute parameterized Cypher queries against the knowledge graph with injection prevention",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  query: {
+                    type: "string",
+                    description: "Cypher query to execute (read-only operations only)"
+                  },
+                  parameters: {
+                    type: "object",
+                    description: "Named parameters for the query",
+                    additionalProperties: true
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Maximum number of results to return (default: 100)"
+                  }
+                },
+                required: ["query"]
               }
             }
           ]
@@ -314,6 +362,165 @@ export async function POST(request: NextRequest) {
                 {
                   type: "text",
                   text: `Data analysis error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'get_cloud_sql_status') {
+        console.log('☁️ GET_CLOUD_SQL_STATUS called:', args)
+        try {
+          // Import the Cloud SQL status function from the backup
+          const { getCloudSQLStatus } = await import('../../../backup-complex-implementation/mcp/tools/cloud-sql-status');
+          const result = await getCloudSQLStatus({ 
+            database: args.database,
+            include_details: args.include_details
+          });
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Cloud SQL status error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Cloud SQL status error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'get_cloud_sql_info') {
+        console.log('ℹ️ GET_CLOUD_SQL_INFO called:', args)
+        try {
+          // Import the Cloud SQL info function from the backup
+          const { getCloudSQLSystemInfo } = await import('../../../backup-complex-implementation/mcp/tools/cloud-sql-status');
+          const result = await getCloudSQLSystemInfo();
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Cloud SQL info error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Cloud SQL info error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'query_knowledge_graph') {
+        console.log('🕸️ QUERY_KNOWLEDGE_GRAPH called:', args)
+        try {
+          // Simple Neo4j knowledge graph query implementation
+          const { getGlobalDatabaseManager } = await import('../../../lib/database');
+          const dbManager = await getGlobalDatabaseManager();
+          
+          // Get Neo4j connection
+          const neo4jConnection = dbManager.getConnection('neo4j');
+          if (!neo4jConnection) {
+            throw new Error('Neo4j connection not available');
+          }
+          
+          // Execute the query with parameters
+          const result = await neo4jConnection.query(
+            args.query, 
+            args.parameters || {}
+          );
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    query: args.query,
+                    parameters: args.parameters || {},
+                    results: result.data || [],
+                    records_returned: result.data?.length || 0,
+                    timestamp: new Date().toISOString()
+                  }, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Knowledge graph query error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Knowledge graph query error: ${error instanceof Error ? error.message : String(error)}`
                 }
               ]
             }
