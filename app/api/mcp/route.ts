@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Handle tools/list
     if (method === 'tools/list') {
-      console.log('📋 TOOLS/LIST called - returning echo + explore_database + query_database tools')
+      console.log('📋 TOOLS/LIST called - returning echo + explore_database + query_database + analyze_data tools')
       return NextResponse.json({
         jsonrpc: "2.0",
         id,
@@ -118,6 +118,33 @@ export async function POST(request: NextRequest) {
                   }
                 },
                 required: ["query"]
+              }
+            },
+            {
+              name: "analyze_data",
+              description: "Generate analytics insights from database tables with common patterns",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  table_name: {
+                    type: "string",
+                    description: "Table name to analyze"
+                  },
+                  analysis_type: {
+                    type: "string",
+                    enum: ["summary", "trends", "distribution"],
+                    description: "Type of analysis: summary, trends, or distribution"
+                  },
+                  date_column: {
+                    type: "string",
+                    description: "Date/timestamp column name for trend analysis"
+                  },
+                  group_by: {
+                    type: "string",
+                    description: "Column to group by for distribution analysis"
+                  }
+                },
+                required: ["table_name", "analysis_type"]
               }
             }
           ]
@@ -236,6 +263,57 @@ export async function POST(request: NextRequest) {
                 {
                   type: "text",
                   text: `Database query error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'analyze_data') {
+        console.log('📊 ANALYZE_DATA called:', args)
+        try {
+          // Import the data analysis function from the backup
+          const { analyzeTableData } = await import('../../../backup-complex-implementation/mcp/tools/database-explorer');
+          const result = await analyzeTableData({ 
+            table_name: args.table_name,
+            analysis_type: args.analysis_type,
+            date_column: args.date_column,
+            group_by: args.group_by
+          });
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Data analysis error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Data analysis error: ${error instanceof Error ? error.message : String(error)}`
                 }
               ]
             }
