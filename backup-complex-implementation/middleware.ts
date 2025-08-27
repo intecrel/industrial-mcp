@@ -24,9 +24,12 @@ export function middleware(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const hasBearer = authHeader && authHeader.startsWith('Bearer ')
   
-  // SIMPLE FIX: Handle MCP POST requests to root path  
+  // CRITICAL FIX: Handle MCP POST requests to root path
   if (request.nextUrl.pathname === '/' && request.method === 'POST' && hasBearer) {
-    console.log('🔓 MCP POST request - rewriting to /api/mcp')
+    console.log('🔓 Allowing MCP POST request to root with Bearer token')
+    console.log(`🔍 REVERT TO WORKING: Rewriting POST / back to working /api/mcp`)
+    console.log(`🔍 User-Agent: ${request.headers.get('user-agent')}`)
+    // Revert to working custom MCP endpoint
     return NextResponse.rewrite(new URL('/api/mcp', request.url))
   }
   
