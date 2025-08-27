@@ -185,9 +185,8 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(jsonRpcRequest)
     });
 
-    // Get the MCP handler
-    const { POST: mcpHandler } = await import('../[transport]/route');
-    const mcpResponse = await mcpHandler(mcpRequest);
+    // Forward to the MCP endpoint directly
+    const mcpResponse = await fetch(mcpRequest);
     
     // Return the response as SSE format
     const jsonData = await mcpResponse.json();
