@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Handle tools/list
     if (method === 'tools/list') {
-      console.log('📋 TOOLS/LIST called - returning echo + explore_database tools')
+      console.log('📋 TOOLS/LIST called - returning echo + explore_database + query_database tools')
       return NextResponse.json({
         jsonrpc: "2.0",
         id,
@@ -100,6 +100,24 @@ export async function POST(request: NextRequest) {
                   }
                 },
                 required: ["action"]
+              }
+            },
+            {
+              name: "query_database",
+              description: "Execute custom SQL queries safely with automatic query validation",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  query: {
+                    type: "string",
+                    description: "SQL query to execute (SELECT statements only for safety)"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Maximum number of rows to return (default: 100)"
+                  }
+                },
+                required: ["query"]
               }
             }
           ]
@@ -169,6 +187,55 @@ export async function POST(request: NextRequest) {
                 {
                   type: "text",
                   text: `Database explorer error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'query_database') {
+        console.log('🔍 QUERY_DATABASE called:', args)
+        try {
+          // Import the database query function from the backup
+          const { executeCustomQuery } = await import('../../../backup-complex-implementation/mcp/tools/database-explorer');
+          const result = await executeCustomQuery({ 
+            query: args.query, 
+            limit: args.limit || 100
+          });
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Database query error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Database query error: ${error instanceof Error ? error.message : String(error)}`
                 }
               ]
             }
