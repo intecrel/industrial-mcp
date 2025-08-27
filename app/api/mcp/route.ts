@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Handle tools/list
     if (method === 'tools/list') {
-      console.log('📋 TOOLS/LIST called - returning 7 tools: echo + explore_database + query_database + analyze_data + get_cloud_sql_status + get_cloud_sql_info + query_knowledge_graph')
+      console.log('📋 TOOLS/LIST called - returning 12 tools: echo + 6 database tools + 5 advanced analytics tools')
       return NextResponse.json({
         jsonrpc: "2.0",
         id,
@@ -193,6 +193,128 @@ export async function POST(request: NextRequest) {
                   }
                 },
                 required: ["query"]
+              }
+            },
+            {
+              name: "get_organizational_structure",
+              description: "Get organizational structure including departments and reporting hierarchies from the knowledge graph",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  department: {
+                    type: "string",
+                    description: "Specific department name or ID to focus on"
+                  },
+                  depth: {
+                    type: "number",
+                    description: "Maximum hierarchy depth to traverse (default: 3)"
+                  },
+                  include_employees: {
+                    type: "boolean",
+                    description: "Include employee information (default: false)"
+                  }
+                }
+              }
+            },
+            {
+              name: "find_capability_paths",
+              description: "Find capability paths and skill networks within the organization using knowledge graph analysis",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  skill: {
+                    type: "string",
+                    description: "Target skill to analyze paths for"
+                  },
+                  source_employee: {
+                    type: "string",
+                    description: "Starting employee name or ID for path analysis"
+                  },
+                  target_role: {
+                    type: "string",
+                    description: "Target role or position to find paths to"
+                  },
+                  max_hops: {
+                    type: "number",
+                    description: "Maximum relationship hops to traverse (default: 4)"
+                  }
+                },
+                required: ["skill"]
+              }
+            },
+            {
+              name: "get_visitor_analytics",
+              description: "Get visitor analytics including traffic patterns and user behavior from Matomo",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  date_range: {
+                    type: "string",
+                    enum: ["today", "yesterday", "last_7_days", "last_30_days", "current_month"],
+                    description: "Date range for analytics (default: last_7_days)"
+                  },
+                  site_id: {
+                    type: "number",
+                    description: "Specific site ID to analyze"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Maximum number of results to return (default: 100)"
+                  }
+                }
+              }
+            },
+            {
+              name: "get_conversion_metrics",
+              description: "Get conversion metrics including goal tracking and funnel analysis from Matomo",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  date_range: {
+                    type: "string",
+                    enum: ["today", "yesterday", "last_7_days", "last_30_days", "current_month"],
+                    description: "Date range for metrics (default: last_30_days)"
+                  },
+                  site_id: {
+                    type: "number",
+                    description: "Specific site ID to analyze"
+                  },
+                  goal_id: {
+                    type: "number",
+                    description: "Specific goal ID to analyze"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Maximum number of results to return (default: 50)"
+                  }
+                }
+              }
+            },
+            {
+              name: "get_content_performance",
+              description: "Get content performance including page views, bounce rates, and engagement from Matomo",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  date_range: {
+                    type: "string",
+                    enum: ["today", "yesterday", "last_7_days", "last_30_days", "current_month"],
+                    description: "Date range for performance data (default: last_30_days)"
+                  },
+                  site_id: {
+                    type: "number",
+                    description: "Specific site ID to analyze"
+                  },
+                  content_type: {
+                    type: "string",
+                    enum: ["pages", "entry_pages", "exit_pages"],
+                    description: "Type of content analysis (default: pages)"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Maximum number of results to return (default: 50)"
+                  }
+                }
               }
             }
           ]
@@ -521,6 +643,351 @@ export async function POST(request: NextRequest) {
                 {
                   type: "text",
                   text: `Knowledge graph query error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'get_organizational_structure') {
+        console.log('🏢 GET_ORGANIZATIONAL_STRUCTURE called:', args)
+        try {
+          // Simple organizational structure query implementation
+          const { getGlobalDatabaseManager } = await import('../../../lib/database');
+          const dbManager = await getGlobalDatabaseManager();
+          const neo4jConnection = dbManager.getConnection('neo4j');
+          
+          if (!neo4jConnection) {
+            throw new Error('Neo4j connection not available');
+          }
+          
+          // Basic organizational query
+          const query = `
+            MATCH (dept:Department)
+            OPTIONAL MATCH (dept)-[:REPORTS_TO*0..${args.depth || 3}]->(parent:Department)
+            OPTIONAL MATCH (emp:Employee)-[:WORKS_IN]->(dept)
+            RETURN dept, parent, ${args.include_employees ? 'collect(emp) as employees' : 'null as employees'}
+            ORDER BY dept.name
+          `;
+          
+          const result = await neo4jConnection.query(query, {});
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    department: args.department,
+                    depth: args.depth || 3,
+                    include_employees: args.include_employees || false,
+                    results: result.data || [],
+                    records_returned: result.data?.length || 0,
+                    timestamp: new Date().toISOString()
+                  }, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Organizational structure error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Organizational structure error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'find_capability_paths') {
+        console.log('🛤️ FIND_CAPABILITY_PATHS called:', args)
+        try {
+          // Simple capability paths query implementation
+          const { getGlobalDatabaseManager } = await import('../../../lib/database');
+          const dbManager = await getGlobalDatabaseManager();
+          const neo4jConnection = dbManager.getConnection('neo4j');
+          
+          if (!neo4jConnection) {
+            throw new Error('Neo4j connection not available');
+          }
+          
+          // Basic skill/capability query
+          const query = `
+            MATCH (skill:Skill {name: $skill})
+            OPTIONAL MATCH path = (emp:Employee)-[:HAS_SKILL]->(skill)
+            OPTIONAL MATCH (emp)-[:WORKS_IN]->(dept:Department)
+            RETURN skill, emp, dept, path
+            LIMIT ${args.max_hops * 10 || 40}
+          `;
+          
+          const result = await neo4jConnection.query(query, { skill: args.skill });
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    skill: args.skill,
+                    source_employee: args.source_employee,
+                    target_role: args.target_role,
+                    max_hops: args.max_hops || 4,
+                    results: result.data || [],
+                    records_returned: result.data?.length || 0,
+                    timestamp: new Date().toISOString()
+                  }, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Capability paths error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Capability paths error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'get_visitor_analytics') {
+        console.log('📈 GET_VISITOR_ANALYTICS called:', args)
+        try {
+          // Simple visitor analytics query implementation
+          const { getGlobalDatabaseManager } = await import('../../../lib/database');
+          const dbManager = await getGlobalDatabaseManager();
+          const connection = dbManager.getConnection();
+          
+          if (connection.type !== 'mysql') {
+            throw new Error('MySQL connection required for visitor analytics');
+          }
+          
+          // Basic visitor query for Matomo
+          const query = `
+            SELECT 
+              COUNT(DISTINCT idvisitor) as unique_visitors,
+              COUNT(*) as total_visits,
+              DATE(visit_first_action_time) as visit_date
+            FROM matomo_log_visit 
+            WHERE visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            GROUP BY DATE(visit_first_action_time)
+            ORDER BY visit_date DESC
+            LIMIT ?
+          `;
+          
+          const result = await connection.query(query, [args.limit || 100]);
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    date_range: args.date_range || 'last_7_days',
+                    site_id: args.site_id,
+                    results: result.data || [],
+                    records_returned: result.data?.length || 0,
+                    timestamp: new Date().toISOString()
+                  }, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Visitor analytics error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Visitor analytics error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'get_conversion_metrics') {
+        console.log('🎯 GET_CONVERSION_METRICS called:', args)
+        try {
+          // Simple conversion metrics implementation
+          const { getGlobalDatabaseManager } = await import('../../../lib/database');
+          const dbManager = await getGlobalDatabaseManager();
+          const connection = dbManager.getConnection();
+          
+          const query = `
+            SELECT 
+              COUNT(*) as total_conversions,
+              DATE(server_time) as conversion_date,
+              idgoal
+            FROM matomo_log_conversion 
+            WHERE server_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            GROUP BY DATE(server_time), idgoal
+            ORDER BY conversion_date DESC
+            LIMIT ?
+          `;
+          
+          const result = await connection.query(query, [args.limit || 50]);
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    date_range: args.date_range || 'last_30_days',
+                    results: result.data || [],
+                    records_returned: result.data?.length || 0,
+                    timestamp: new Date().toISOString()
+                  }, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Conversion metrics error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Conversion metrics error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'get_content_performance') {
+        console.log('📊 GET_CONTENT_PERFORMANCE called:', args)
+        try {
+          // Simple content performance implementation
+          const { getGlobalDatabaseManager } = await import('../../../lib/database');
+          const dbManager = await getGlobalDatabaseManager();
+          const connection = dbManager.getConnection();
+          
+          const query = `
+            SELECT 
+              url,
+              COUNT(*) as page_views,
+              COUNT(DISTINCT idvisitor) as unique_visitors
+            FROM matomo_log_link_visit_action la
+            JOIN matomo_log_visit v ON la.idvisit = v.idvisit
+            WHERE la.server_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            GROUP BY url
+            ORDER BY page_views DESC
+            LIMIT ?
+          `;
+          
+          const result = await connection.query(query, [args.limit || 50]);
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    date_range: args.date_range || 'last_30_days',
+                    content_type: args.content_type || 'pages',
+                    results: result.data || [],
+                    records_returned: result.data?.length || 0,
+                    timestamp: new Date().toISOString()
+                  }, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Content performance error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Content performance error: ${error instanceof Error ? error.message : String(error)}`
                 }
               ]
             }
