@@ -37,11 +37,7 @@ export async function POST(request: NextRequest) {
         result: {
           protocolVersion: "2025-06-18",
           capabilities: {
-            tools: {
-              echo: {
-                description: "Echo back messages for testing connectivity"
-              }
-            },
+            tools: {},
             resources: {},
             prompts: {},
             logging: {}
@@ -122,55 +118,6 @@ export async function POST(request: NextRequest) {
         }
       }, {
         status: 404,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      })
-    }
-
-    // Handle resources/list
-    if (method === 'resources/list') {
-      console.log('📋 RESOURCES/LIST called - returning empty list')
-      return NextResponse.json({
-        jsonrpc: "2.0",
-        id,
-        result: {
-          resources: []
-        }
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      })
-    }
-
-    // Handle prompts/list
-    if (method === 'prompts/list') {
-      console.log('📋 PROMPTS/LIST called - returning empty list')
-      return NextResponse.json({
-        jsonrpc: "2.0",
-        id,
-        result: {
-          prompts: []
-        }
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      })
-    }
-
-    // Handle notifications/initialized
-    if (method === 'notifications/initialized') {
-      console.log('🔔 NOTIFICATIONS/INITIALIZED - MCP setup complete')
-      // Notifications don't need responses, but we'll return 200 OK
-      return NextResponse.json({
-        jsonrpc: "2.0",
-        result: {}
-      }, {
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
