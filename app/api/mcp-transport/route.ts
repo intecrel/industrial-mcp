@@ -67,7 +67,6 @@ const handler = createMcpHandler(
     },
   },
   {
-    basePath: "/api/mcp-transport",
     verboseLogs: true,
     maxDuration: 30,
   }
