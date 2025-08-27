@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Handle tools/list
     if (method === 'tools/list') {
-      console.log('📋 TOOLS/LIST called - returning echo tool')
+      console.log('📋 TOOLS/LIST called - returning echo + explore_database tools')
       return NextResponse.json({
         jsonrpc: "2.0",
         id,
@@ -77,6 +77,29 @@ export async function POST(request: NextRequest) {
                   }
                 },
                 required: ["message"]
+              }
+            },
+            {
+              name: "explore_database",
+              description: "Explore database structure - list tables, inspect schemas, and discover data",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  action: {
+                    type: "string",
+                    enum: ["list_tables", "describe_table", "sample_data"],
+                    description: "What to explore: list_tables, describe_table, or sample_data"
+                  },
+                  table_name: {
+                    type: "string",
+                    description: "Table name (required for describe_table and sample_data)"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Number of sample rows to return (default: 10)"
+                  }
+                },
+                required: ["action"]
               }
             }
           ]
@@ -106,6 +129,56 @@ export async function POST(request: NextRequest) {
             'Access-Control-Allow-Origin': '*'
           }
         })
+      }
+
+      if (name === 'explore_database') {
+        console.log('🗃️ EXPLORE_DATABASE called:', args)
+        try {
+          // Import the database explorer from the backup
+          const { exploreDatabaseStructure } = await import('../../../backup-complex-implementation/mcp/tools/database-explorer');
+          const result = await exploreDatabaseStructure({ 
+            action: args.action, 
+            table_name: args.table_name, 
+            limit: args.limit || 10
+          });
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Database explorer error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Database explorer error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
       }
 
       // Tool not found
