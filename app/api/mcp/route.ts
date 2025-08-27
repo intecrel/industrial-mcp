@@ -37,7 +37,11 @@ export async function POST(request: NextRequest) {
         result: {
           protocolVersion: "2025-06-18",
           capabilities: {
-            tools: {},
+            tools: {
+              echo: {
+                description: "Echo back messages for testing connectivity"
+              }
+            },
             resources: {},
             prompts: {},
             logging: {}
