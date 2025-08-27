@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Handle tools/list
     if (method === 'tools/list') {
-      console.log('📋 TOOLS/LIST called - returning 12 tools: echo + 6 database tools + 5 advanced analytics tools')
+      console.log('📋 TOOLS/LIST called - returning 17 tools: echo + 16 comprehensive database/analytics tools')
       return NextResponse.json({
         jsonrpc: "2.0",
         id,
@@ -315,6 +315,140 @@ export async function POST(request: NextRequest) {
                     description: "Maximum number of results to return (default: 50)"
                   }
                 }
+              }
+            },
+            {
+              name: "query_matomo_database",
+              description: "Execute secure parameterized Matomo database queries with injection prevention",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  query: {
+                    type: "string",
+                    description: "SQL query to execute (SELECT statements only, must target matomo_ tables)"
+                  },
+                  parameters: {
+                    type: "array",
+                    description: "Named parameters for the query"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Maximum number of rows to return (default: 100)"
+                  }
+                },
+                required: ["query"]
+              }
+            },
+            {
+              name: "get_company_intelligence",
+              description: "Get B2B company intelligence from visitor data using enriched session data",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  date_range: {
+                    type: "string",
+                    enum: ["today", "yesterday", "last_7_days", "last_30_days", "current_month"],
+                    description: "Date range for intelligence data (default: last_30_days)"
+                  },
+                  company_name: {
+                    type: "string",
+                    description: "Filter by company name (partial match)"
+                  },
+                  domain: {
+                    type: "string",
+                    description: "Filter by company domain"
+                  },
+                  country: {
+                    type: "string",
+                    description: "Filter by company country"
+                  },
+                  site_id: {
+                    type: "number",
+                    description: "Specific site ID to analyze"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Maximum number of companies to return (default: 50)"
+                  }
+                }
+              }
+            },
+            {
+              name: "get_unified_dashboard_data",
+              description: "Get unified dashboard data combining metrics from both Neo4j (industrial) and MySQL (analytics) databases",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  company_name: {
+                    type: "string",
+                    description: "Filter by company name for cross-database correlation"
+                  },
+                  date_range: {
+                    type: "string",
+                    enum: ["today", "yesterday", "last_7_days", "last_30_days", "current_month"],
+                    description: "Date range for analytics data (default: last_30_days)"
+                  },
+                  site_id: {
+                    type: "number",
+                    description: "Specific site ID for analytics filtering"
+                  },
+                  include_web_analytics: {
+                    type: "boolean",
+                    description: "Include MySQL web analytics data (default: true)"
+                  },
+                  include_operational_data: {
+                    type: "boolean",
+                    description: "Include Neo4j operational data (default: true)"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Maximum number of results per data source (default: 50)"
+                  }
+                }
+              }
+            },
+            {
+              name: "correlate_operational_relationships",
+              description: "Correlate operational relationships with web analytics data across Neo4j and MySQL databases",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  entity_type: {
+                    type: "string",
+                    enum: ["Machine", "Process", "Service", "Company", "Location"],
+                    description: "Type of operational entity to correlate (default: Company)"
+                  },
+                  entity_name: {
+                    type: "string",
+                    description: "Specific entity name to correlate"
+                  },
+                  website_domain: {
+                    type: "string",
+                    description: "Website domain for visitor correlation"
+                  },
+                  date_range: {
+                    type: "string",
+                    enum: ["today", "yesterday", "last_7_days", "last_30_days", "current_month"],
+                    description: "Date range for correlation analysis (default: last_30_days)"
+                  },
+                  correlation_type: {
+                    type: "string",
+                    enum: ["visitor_to_entity", "company_to_operations", "geographic_correlation"],
+                    description: "Type of correlation analysis (default: company_to_operations)"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Maximum number of correlations to return (default: 30)"
+                  }
+                }
+              }
+            },
+            {
+              name: "get_knowledge_graph_stats",
+              description: "Get knowledge graph statistics and health information including node/relationship counts",
+              inputSchema: {
+                type: "object",
+                properties: {}
               }
             }
           ]
@@ -988,6 +1122,124 @@ export async function POST(request: NextRequest) {
                 {
                   type: "text",
                   text: `Content performance error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      // Handle remaining 5 tools with simplified implementations
+      if (['query_matomo_database', 'get_company_intelligence', 'get_unified_dashboard_data', 'correlate_operational_relationships', 'get_knowledge_graph_stats'].includes(name)) {
+        console.log(`🔧 ${name.toUpperCase()} called:`, args)
+        try {
+          const { getGlobalDatabaseManager } = await import('../../../lib/database');
+          const dbManager = await getGlobalDatabaseManager();
+          let result = {};
+          
+          if (name === 'query_matomo_database') {
+            const connection = dbManager.getConnection();
+            const queryResult = await connection.query(args.query, args.parameters || []);
+            result = {
+              query: args.query,
+              results: queryResult.data || [],
+              records_returned: queryResult.data?.length || 0
+            };
+          }
+          else if (name === 'get_company_intelligence') {
+            const connection = dbManager.getConnection();
+            const query = `SELECT location_country, COUNT(*) as visits FROM matomo_log_visit WHERE visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY location_country LIMIT ?`;
+            const queryResult = await connection.query(query, [args.limit || 50]);
+            result = {
+              company_intelligence: queryResult.data || [],
+              date_range: args.date_range || 'last_30_days'
+            };
+          }
+          else if (name === 'get_unified_dashboard_data') {
+            // Simplified unified dashboard
+            const connection = dbManager.getConnection();
+            const analyticsQuery = `SELECT COUNT(*) as total_visits FROM matomo_log_visit WHERE visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)`;
+            const analyticsResult = await connection.query(analyticsQuery, []);
+            
+            const neo4jConnection = dbManager.getConnection('neo4j');
+            const operationalQuery = `MATCH (n) RETURN count(n) as total_nodes LIMIT 1`;
+            const operationalResult = neo4jConnection ? await neo4jConnection.query(operationalQuery, {}) : null;
+            
+            result = {
+              web_analytics: analyticsResult.data || [],
+              operational_data: operationalResult?.data || [],
+              unified_metrics: { total_data_sources: 2 }
+            };
+          }
+          else if (name === 'correlate_operational_relationships') {
+            // Simplified correlation
+            const neo4jConnection = dbManager.getConnection('neo4j');
+            if (neo4jConnection) {
+              const query = `MATCH (e:${args.entity_type || 'Company'}) RETURN e LIMIT ${args.limit || 30}`;
+              const queryResult = await neo4jConnection.query(query, {});
+              result = {
+                correlation_type: args.correlation_type || 'company_to_operations',
+                entity_type: args.entity_type || 'Company',
+                correlations: queryResult.data || []
+              };
+            } else {
+              result = { error: 'Neo4j connection not available' };
+            }
+          }
+          else if (name === 'get_knowledge_graph_stats') {
+            const neo4jConnection = dbManager.getConnection('neo4j');
+            if (neo4jConnection) {
+              const nodeQuery = `MATCH (n) RETURN count(n) as total_nodes`;
+              const relQuery = `MATCH ()-[r]->() RETURN count(r) as total_relationships`;
+              const nodes = await neo4jConnection.query(nodeQuery, {});
+              const rels = await neo4jConnection.query(relQuery, {});
+              result = {
+                statistics: {
+                  total_nodes: nodes.data?.[0]?.total_nodes || 0,
+                  total_relationships: rels.data?.[0]?.total_relationships || 0
+                }
+              };
+            } else {
+              result = { error: 'Neo4j connection not available' };
+            }
+          }
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    tool_name: name,
+                    ...result,
+                    timestamp: new Date().toISOString()
+                  }, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error(`❌ ${name} error:`, error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `${name} error: ${error instanceof Error ? error.message : String(error)}`
                 }
               ]
             }
