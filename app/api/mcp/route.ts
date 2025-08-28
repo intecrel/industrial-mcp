@@ -1,10 +1,11 @@
 /**
- * MINIMAL MCP Server - Clean Start
- * Simple JSON-RPC 2.0 implementation with just echo tool
- * No adapters, no complexity - build up step by step
+ * Secure MCP Server with OAuth 2.1 Authentication
+ * JSON-RPC 2.0 implementation with Bearer token and API key authentication
+ * All MCP tools require proper authentication
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { authenticateRequest, hasToolPermission, createAuthError } from '../../../lib/oauth/auth-middleware'
 
 // Simple echo tool handler
 async function handleEchoTool(params: any) {
@@ -20,13 +21,44 @@ async function handleEchoTool(params: any) {
 }
 
 export async function POST(request: NextRequest) {
-  console.log('🚀 MINIMAL MCP SERVER: Request received')
+  console.log('🚀 SECURE MCP SERVER: Request received')
   
   try {
     const body = await request.json()
     console.log('📥 MCP Request:', JSON.stringify(body, null, 2))
 
     const { method, id } = body
+
+    // Skip authentication for initialize and tools/list (discovery methods)
+    const skipAuth = method === 'initialize' || method === 'tools/list'
+    
+    // Authenticate request (except for discovery methods)
+    let authContext = null
+    if (!skipAuth) {
+      try {
+        authContext = await authenticateRequest(request)
+        console.log(`✅ Authenticated user: ${authContext.userId} via ${authContext.method}`)
+      } catch (error) {
+        console.log(`❌ Authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        return NextResponse.json({
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32001,
+            message: "Authentication required",
+            data: createAuthError(error instanceof Error ? error.message : 'Authentication failed')
+          }
+        }, { 
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+          }
+        })
+      }
+    }
 
     // Handle initialize
     if (method === 'initialize') {
@@ -482,6 +514,30 @@ export async function POST(request: NextRequest) {
     if (method === 'tools/call') {
       console.log('🛠️ TOOLS/CALL:', body.params)
       const { name, arguments: args } = body.params
+
+      // Check if user has permission to use this tool
+      if (authContext && !hasToolPermission(authContext, name)) {
+        console.log(`❌ User ${authContext.userId} does not have permission for tool: ${name}`)
+        return NextResponse.json({
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32003,
+            message: "Insufficient permissions",
+            data: {
+              tool: name,
+              required_permissions: "Tool access not granted for this user tier",
+              user_permissions: authContext.permissions
+            }
+          }
+        }, { 
+          status: 403,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
+        })
+      }
 
       if (name === 'echo') {
         const result = await handleEchoTool(args)
