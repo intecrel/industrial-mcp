@@ -1,9 +1,11 @@
 /**
  * OAuth Client Management
  * Handles client registration, validation, and metadata storage
+ * Now uses persistent storage instead of in-memory maps
  */
 
 import { generateSecureRandomString } from './jwt';
+import { getStorageAdapter } from './storage';
 
 export interface OAuthClient {
   client_id: string;
@@ -34,60 +36,82 @@ export interface ClientRegistrationResponse extends OAuthClient {
   client_secret_expires_at?: number;
 }
 
-// In-memory client storage (in production, use a database)
-const registeredClients = new Map<string, OAuthClient>();
+// Storage adapter for persistent client storage
+// Automatically uses Redis in production/preview, in-memory for development
 
 /**
  * Default clients for well-known integrations
+ * These are automatically stored in persistent storage on first access
  */
-const initializeDefaultClients = () => {
-  // Claude Desktop client
-  const claudeDesktopClient: OAuthClient = {
-    client_id: 'claude-desktop',
-    client_name: 'Claude Desktop',
-    redirect_uris: ['http://localhost', 'https://localhost'], // Claude Desktop supports localhost
-    grant_types: ['authorization_code'],
-    response_types: ['code'],
-    scope: 'mcp:tools mcp:resources mcp:prompts',
-    token_endpoint_auth_method: 'none', // Public client
-    application_type: 'native',
-    created_at: Date.now(),
-    updated_at: Date.now(),
-  };
+const getDefaultClients = (): OAuthClient[] => {
+  const now = Date.now();
   
-  // Claude.ai web client (matches dynamic registration pattern)
-  const claudeWebClient: OAuthClient = {
-    client_id: 'claude-web',
-    client_name: 'Claude',
-    redirect_uris: [
-      'https://claude.ai/api/mcp/auth_callback', // Official Claude.ai MCP OAuth callback
-      'https://claude.ai/oauth/callback',
-      'https://claude.ai/api/organizations/*/mcp/callback', 
-      'https://claude.ai/settings/connectors',
-      'https://claude.ai/'
-    ], 
-    grant_types: ['authorization_code', 'refresh_token'],
-    response_types: ['code'],
-    scope: 'mcp:tools mcp:resources mcp:prompts claudeai read:analytics read:knowledge admin:usage',
-    token_endpoint_auth_method: 'none', // No client secret required for fallback client
-    application_type: 'web',
-    created_at: Date.now(),
-    updated_at: Date.now(),
-  };
-  
-  registeredClients.set(claudeDesktopClient.client_id, claudeDesktopClient);
-  registeredClients.set(claudeWebClient.client_id, claudeWebClient);
-  
-  console.log('✅ Default OAuth clients initialized:', Array.from(registeredClients.keys()));
+  return [
+    // Claude Desktop client
+    {
+      client_id: 'claude-desktop',
+      client_name: 'Claude Desktop',
+      redirect_uris: ['http://localhost', 'https://localhost'], // Claude Desktop supports localhost
+      grant_types: ['authorization_code'],
+      response_types: ['code'],
+      scope: 'mcp:tools mcp:resources mcp:prompts',
+      token_endpoint_auth_method: 'none', // Public client
+      application_type: 'native',
+      created_at: now,
+      updated_at: now,
+    },
+    // Claude.ai web client (matches dynamic registration pattern)
+    {
+      client_id: 'claude-web',
+      client_name: 'Claude',
+      redirect_uris: [
+        'https://claude.ai/api/mcp/auth_callback', // Official Claude.ai MCP OAuth callback
+        'https://claude.ai/oauth/callback',
+        'https://claude.ai/api/organizations/*/mcp/callback', 
+        'https://claude.ai/settings/connectors',
+        'https://claude.ai/'
+      ], 
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      scope: 'mcp:tools mcp:resources mcp:prompts claudeai read:analytics read:knowledge admin:usage',
+      token_endpoint_auth_method: 'none', // No client secret required for fallback client
+      application_type: 'web',
+      created_at: now,
+      updated_at: now,
+    }
+  ];
 };
 
-// Initialize default clients
+/**
+ * Initialize default clients in storage if they don't exist
+ */
+const initializeDefaultClients = async (): Promise<void> => {
+  try {
+    const storage = getStorageAdapter();
+    const defaultClients = getDefaultClients();
+    
+    for (const client of defaultClients) {
+      const existing = await storage.getClient(client.client_id);
+      if (!existing) {
+        await storage.setClient(client.client_id, client);
+        console.log(`✅ Default client initialized: ${client.client_name} (${client.client_id})`);
+      }
+    }
+    
+    console.log('✅ Default OAuth clients verification completed');
+  } catch (error) {
+    console.error('❌ Failed to initialize default clients:', error);
+    // Don't throw - fallback to runtime initialization
+  }
+};
+
+// Initialize default clients asynchronously
 initializeDefaultClients();
 
 /**
  * Register a new OAuth client
  */
-export const registerClient = (request: ClientRegistrationRequest): ClientRegistrationResponse => {
+export const registerClient = async (request: ClientRegistrationRequest): Promise<ClientRegistrationResponse> => {
   const clientId = generateSecureRandomString(16);
   const now = Date.now();
   
@@ -121,7 +145,9 @@ export const registerClient = (request: ClientRegistrationRequest): ClientRegist
     }
   }
   
-  registeredClients.set(clientId, client);
+  // Store in persistent storage
+  const storage = getStorageAdapter();
+  await storage.setClient(clientId, client);
   
   const response: ClientRegistrationResponse = {
     ...client,
@@ -139,15 +165,29 @@ export const registerClient = (request: ClientRegistrationRequest): ClientRegist
 /**
  * Get client by ID
  */
-export const getClient = (clientId: string): OAuthClient | undefined => {
-  return registeredClients.get(clientId);
+export const getClient = async (clientId: string): Promise<OAuthClient | undefined> => {
+  const storage = getStorageAdapter();
+  const client = await storage.getClient(clientId);
+  
+  // If not found and it's a default client, initialize it
+  if (!client) {
+    const defaultClients = getDefaultClients();
+    const defaultClient = defaultClients.find(c => c.client_id === clientId);
+    if (defaultClient) {
+      await storage.setClient(clientId, defaultClient);
+      console.log(`✅ Default client initialized on demand: ${defaultClient.client_name}`);
+      return defaultClient;
+    }
+  }
+  
+  return client || undefined;
 };
 
 /**
  * Validate client exists and has valid configuration
  */
-export const validateClient = (clientId: string): OAuthClient => {
-  const client = getClient(clientId);
+export const validateClient = async (clientId: string): Promise<OAuthClient> => {
+  const client = await getClient(clientId);
   if (!client) {
     throw new Error(`Invalid client_id: ${clientId}`);
   }
@@ -157,8 +197,8 @@ export const validateClient = (clientId: string): OAuthClient => {
 /**
  * Validate redirect URI against registered URIs
  */
-export const validateRedirectUri = (clientId: string, redirectUri: string): boolean => {
-  const client = getClient(clientId);
+export const validateRedirectUri = async (clientId: string, redirectUri: string): Promise<boolean> => {
+  const client = await getClient(clientId);
   if (!client) {
     return false;
   }
@@ -197,18 +237,19 @@ const isValidRedirectUri = (uri: string): boolean => {
 /**
  * Get all registered clients (admin endpoint)
  */
-export const getAllClients = (): OAuthClient[] => {
-  return Array.from(registeredClients.values());
+export const getAllClients = async (): Promise<OAuthClient[]> => {
+  const storage = getStorageAdapter();
+  return await storage.getAllClients();
 };
 
 /**
  * Authenticate client credentials
  */
-export const authenticateClient = (
+export const authenticateClient = async (
   clientId: string, 
   clientSecret?: string
-): OAuthClient => {
-  const client = validateClient(clientId);
+): Promise<OAuthClient> => {
+  const client = await validateClient(clientId);
   
   if (client.token_endpoint_auth_method === 'none') {
     // Public client - no secret required

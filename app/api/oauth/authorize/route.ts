@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateClient, validateRedirectUri } from '../../../../lib/oauth/clients';
 import { validateScopes } from '../../../../lib/oauth/scopes';
 import { isValidCodeChallenge } from '../../../../lib/oauth/pkce';
+import { getCurrentDeploymentUrl } from '../../../../lib/oauth/config';
 
 // Force dynamic rendering for OAuth routes
 export const dynamic = 'force-dynamic';
@@ -41,12 +42,16 @@ export async function GET(request: NextRequest) {
     // Validate client - with fallback for Claude.ai dynamic registration
     let client;
     try {
-      client = validateClient(client_id);
+      client = await validateClient(client_id);
     } catch (error) {
       // If dynamic client not found, check if it's Claude.ai and use pre-registered client
       if (redirect_uri === 'https://claude.ai/api/mcp/auth_callback') {
         console.log(`🔄 Dynamic client ${client_id} not found, using pre-registered claude-web client`);
-        client = validateClient('claude-web');
+        try {
+          client = await validateClient('claude-web');
+        } catch (fallbackError) {
+          return createErrorResponse('invalid_client', fallbackError instanceof Error ? fallbackError.message : 'Invalid client');
+        }
       } else {
         return createErrorResponse('invalid_client', error instanceof Error ? error.message : 'Invalid client');
       }
@@ -54,7 +59,7 @@ export async function GET(request: NextRequest) {
     
     // Validate redirect URI (use the actual client we're using, which might be the fallback)
     const clientIdToCheck = client.client_id;
-    if (!validateRedirectUri(clientIdToCheck, redirect_uri)) {
+    if (!(await validateRedirectUri(clientIdToCheck, redirect_uri))) {
       return createErrorResponse('invalid_redirect_uri', 'Invalid redirect_uri for this client');
     }
     
@@ -75,10 +80,8 @@ export async function GET(request: NextRequest) {
     
     // Redirect to consent screen for user authorization
     try {
-      // Get the base URL for the consent page
-      const baseUrl = process.env.NODE_ENV === 'development'
-        ? 'http://localhost:3000'
-        : 'https://industrial-mcp-delta.vercel.app';
+      // Get the current deployment URL dynamically
+      const baseUrl = getCurrentDeploymentUrl();
       
       // Construct consent URL with OAuth parameters
       const consentUrl = new URL(`${baseUrl}/auth/consent`);

@@ -1,19 +1,43 @@
 /**
- * Root MCP Discovery Endpoint
- * This endpoint helps Claude.ai discover MCP capabilities after OAuth completion
- * It serves as a bridge between OAuth discovery and MCP endpoint location
+ * Root MCP request handler
+ * Extracted from /app/api/route.ts to be used by [transport] route
+ * when handling root API requests
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { applyCORSHeaders } from '../../lib/security/cors-config';
 
-export async function GET(request: NextRequest) {
+export async function handleRootRequest(request: Request): Promise<Response> {
+  // Convert Request to NextRequest-like object for compatibility
+  const nextRequest = request as unknown as NextRequest;
+  console.log('🔄 ROOT HANDLER - Processing request');
+  
+  if (request.method === 'GET') {
+    return handleRootGET(nextRequest);
+  } else if (request.method === 'POST') {
+    return handleRootPOST(nextRequest);
+  } else if (request.method === 'OPTIONS') {
+    return handleRootOPTIONS(nextRequest);
+  } else {
+    const response = NextResponse.json({
+      message: "Method not allowed"
+    }, {
+      status: 405,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    applyCORSHeaders(nextRequest, response, process.env.NODE_ENV as any);
+    return response;
+  }
+}
+
+async function handleRootGET(nextRequest: NextRequest): Promise<Response> {
+  const request = nextRequest;
   const baseUrl = request.nextUrl.origin;
   
-  console.log('🔍 ORIGINAL ROOT ROUTE GET endpoint called');
+  console.log('🔍 Root MCP discovery endpoint called');
   console.log(`📋 Origin: ${baseUrl}`);
-  console.log(`🔍 ORIGINAL ROOT ROUTE GET - URL:`, request.url);
-  console.log(`🔍 ORIGINAL ROOT ROUTE GET - pathname:`, request.nextUrl.pathname);
   console.log(`📋 User-Agent: ${request.headers.get('user-agent')}`);
   
   // Check if this looks like a Claude.ai request
@@ -145,17 +169,17 @@ export async function GET(request: NextRequest) {
   return response;
 }
 
-export async function POST(request: NextRequest) {
+async function handleRootPOST(nextRequest: NextRequest): Promise<Response> {
+  const request = nextRequest;
   // Handle POST requests that might be MCP calls to the root
-  console.log('🔄 ORIGINAL ROOT ROUTE POST request received - checking if this is MCP call');
-  console.log('🔍 ORIGINAL ROOT ROUTE - URL:', request.url);
-  console.log('🔍 ORIGINAL ROOT ROUTE - pathname:', request.nextUrl.pathname);
-  console.log('🔍 ORIGINAL ROOT ROUTE - method:', request.method);
+  console.log('🔄 ROOT HANDLER POST request received - checking if this is MCP call');
+  console.log('🔍 ROOT HANDLER - URL:', request.url);
+  console.log('🔍 ROOT HANDLER - pathname:', request.nextUrl.pathname);
   
   const baseUrl = request.nextUrl.origin;
   const authHeader = request.headers.get('authorization');
   const hasBearer = authHeader && authHeader.startsWith('Bearer ');
-  
+
   console.log(`📋 POST to root - Bearer token: ${hasBearer ? 'present' : 'missing'}`);
   console.log(`📋 Request headers:`, {
     'content-type': request.headers.get('content-type'),
@@ -163,7 +187,7 @@ export async function POST(request: NextRequest) {
     'accept': request.headers.get('accept'),
     'origin': request.headers.get('origin')
   });
-  
+
   // Check if this is an MCP request body
   try {
     // Clone the request to avoid consuming the body stream
@@ -217,7 +241,7 @@ export async function POST(request: NextRequest) {
             'Cache-Control': 'no-cache'
           }
         });
-        applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+        applyCORSHeaders(nextRequest, response, process.env.NODE_ENV as any);
         return response;
       } catch (fetchError) {
         console.error('❌ Error forwarding to /api/mcp:', fetchError);
@@ -230,7 +254,7 @@ export async function POST(request: NextRequest) {
     console.error('❌ Error processing POST request to root:', error);
     console.log('📝 Non-JSON or invalid POST request to root');
   }
-  
+
   // Fallback for non-MCP POST requests
   console.log('⚠️ POST request to root was not a valid MCP JSON-RPC call');
   
@@ -257,7 +281,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json'
       }
     });
-    applyCORSHeaders(request, response, process.env.NODE_ENV as any);
+    applyCORSHeaders(nextRequest, response, process.env.NODE_ENV as any);
     return response;
   }
   
@@ -273,7 +297,8 @@ export async function POST(request: NextRequest) {
   return response;
 }
 
-export async function OPTIONS(request: NextRequest) {
+async function handleRootOPTIONS(nextRequest: NextRequest): Promise<Response> {
+  const request = nextRequest;
   const response = new Response(null, {
     status: 204,
     headers: {}

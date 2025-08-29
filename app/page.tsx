@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
+// This page component handles UI for GET requests to "/"
+// API requests (POST/OPTIONS) are handled by /app/route.ts
 export default function HomePage() {
   const [status, setStatus] = useState<'verified' | 'not-verified' | 'loading'>('loading')
   const [macAddress, setMacAddress] = useState('')

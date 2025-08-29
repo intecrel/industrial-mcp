@@ -57,13 +57,13 @@ export async function POST(request: NextRequest) {
     // Authenticate client - with fallback for Claude.ai dynamic registration
     let client;
     try {
-      client = authenticateClient(client_id, client_secret);
+      client = await authenticateClient(client_id, client_secret);
     } catch (error) {
       // If dynamic client not found, check if it's Claude.ai and use pre-registered client
       if (redirect_uri === 'https://claude.ai/api/mcp/auth_callback') {
         console.log(`🔄 Dynamic client ${client_id} not found in token endpoint, using pre-registered claude-web client`);
         try {
-          client = authenticateClient('claude-web', client_secret);
+          client = await authenticateClient('claude-web', client_secret);
         } catch (fallbackError) {
           return createErrorResponse('invalid_client', fallbackError instanceof Error ? fallbackError.message : 'Client authentication failed');
         }

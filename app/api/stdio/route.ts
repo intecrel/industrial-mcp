@@ -58,11 +58,8 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(jsonRpcRequest)
     });
 
-    // Get the MCP handler from the dynamic route
-    const { POST: mcpHandler } = await import('../[transport]/route');
-    
-    // Call the MCP handler
-    const mcpResponse = await mcpHandler(mcpRequest);
+    // Forward to the MCP endpoint directly
+    const mcpResponse = await fetch(mcpRequest);
 
     // Handle different response types
     if (mcpResponse.headers.get('content-type')?.includes('text/event-stream')) {
