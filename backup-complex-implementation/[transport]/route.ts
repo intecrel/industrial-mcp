@@ -1,5 +1,6 @@
 import { createMcpHandler, withMcpAuth } from "@vercel/mcp-adapter";
 import { z } from "zod";
+import { NextResponse } from 'next/server';
 import { getRequestValidator, validateSqlQuery, validateCypherQuery } from '../../../lib/security/request-validator';
 import { applyCORSHeaders } from '../../../lib/security/cors-config';
 import { NextRequest } from 'next/server';
@@ -27,6 +28,198 @@ interface UsageEntry {
 
 // In-memory usage tracking (in production, use a database)
 const usageLog: UsageEntry[] = [];
+
+/**
+ * Inline root request handler to avoid dynamic import issues
+ */
+async function handleRootRequestInline(request: Request): Promise<Response> {
+  console.log('🔄 ROOT HANDLER INLINE - Processing request');
+  
+  if (request.method === 'GET') {
+    return handleRootGETInline(request);
+  } else if (request.method === 'POST') {
+    return handleRootPOSTInline(request);
+  } else if (request.method === 'OPTIONS') {
+    return handleRootOPTIONSInline(request);
+  } else {
+    const response = NextResponse.json({
+      message: "Method not allowed"
+    }, {
+      status: 405,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    applyCORSHeaders(request as any, response, process.env.NODE_ENV as any);
+    return response;
+  }
+}
+
+async function handleRootGETInline(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const baseUrl = url.origin;
+  
+  console.log('🔍 Root MCP discovery endpoint called (inline)');
+  console.log(`📋 Origin: ${baseUrl}`);
+  
+  // Check if this looks like a Claude.ai request
+  const userAgent = request.headers.get('user-agent') || '';
+  const isClaudeAI = userAgent.toLowerCase().includes('claude') || 
+                     userAgent.toLowerCase().includes('anthropic');
+  
+  // Check if this request has authorization header (Bearer token from OAuth)
+  const authHeader = request.headers.get('authorization');
+  const hasBearer = authHeader && authHeader.startsWith('Bearer ');
+  
+  console.log(`🔍 Root discovery - Auth header: ${hasBearer ? 'Bearer token present' : 'No Bearer token'}`);
+  
+  if (hasBearer && isClaudeAI) {
+    console.log('🔄 Claude.ai has Bearer token - providing MCP discovery response');
+    
+    return NextResponse.json({
+      protocol_version: "2025-03-26",
+      server_name: "Industrial MCP Server", 
+      server_version: "2.0.0",
+      mcp_endpoint: `${baseUrl}/api/mcp`,
+      authentication: {
+        type: "bearer_token",
+        required: true
+      },
+      transports: [{
+        type: "http",
+        url: `${baseUrl}/api/mcp`,
+        methods: ["GET", "POST", "OPTIONS"],
+        authentication: "bearer"
+      }],
+      instructions: "Use /api/mcp endpoint for MCP JSON-RPC calls with Bearer token authentication"
+    }, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+  }
+
+  // Default discovery response
+  const response = NextResponse.json({
+    protocol_version: "2025-03-26",
+    server_name: "Industrial MCP Server",
+    server_version: "2.0.0",
+    authentication: {
+      oauth2: {
+        enabled: true,
+        authorization_endpoint: `${baseUrl}/.well-known/oauth-authorization-server`,
+        protected_resource_metadata: `${baseUrl}/.well-known/oauth-protected-resource`,
+        requires_bearer_token: true,
+        bearer_token_endpoint: `${baseUrl}/api/mcp`
+      }
+    },
+    mcp_endpoints: {
+      primary: `${baseUrl}/api/mcp`
+    },
+    timestamp: new Date().toISOString()
+  }, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=300'
+    }
+  });
+
+  applyCORSHeaders(request as any, response, process.env.NODE_ENV as any);
+  return response;
+}
+
+async function handleRootPOSTInline(request: Request): Promise<Response> {
+  console.log('🔄 ROOT HANDLER INLINE POST request received - checking if this is MCP call');
+  const url = new URL(request.url);
+  console.log('🔍 ROOT HANDLER INLINE - URL:', request.url);
+  console.log('🔍 ROOT HANDLER INLINE - pathname:', url.pathname);
+  
+  const baseUrl = url.origin;
+  const authHeader = request.headers.get('authorization');
+  const hasBearer = authHeader && authHeader.startsWith('Bearer ');
+
+  console.log(`📋 POST to root - Bearer token: ${hasBearer ? 'present' : 'missing'}`);
+
+  try {
+    const bodyText = await request.clone().text();
+    console.log(`📋 POST body received: ${bodyText.substring(0, 200)}${bodyText.length > 200 ? '...' : ''}`);
+    
+    if (!bodyText.trim()) {
+      console.log('⚠️ Empty POST body received');
+      throw new Error('Empty body');
+    }
+
+    const body = JSON.parse(bodyText);
+    console.log(`📋 Parsed JSON body:`, { jsonrpc: body?.jsonrpc, method: body?.method, id: body?.id });
+    
+    if (body && body.jsonrpc === "2.0") {
+      console.log(`📡 MCP JSON-RPC call detected: ${body.method || 'unknown method'}`);
+      console.log(`🔄 Forwarding MCP call to /api/mcp (auth: ${hasBearer ? 'Bearer token' : 'anonymous'})`);
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': request.headers.get('accept') || 'application/json, text/event-stream',
+        'User-Agent': request.headers.get('user-agent') || 'MCP-Proxy'
+      };
+      
+      if (hasBearer) {
+        headers['Authorization'] = authHeader;
+      }
+      
+      try {
+        const mcpResponse = await fetch(`${baseUrl}/api/mcp`, {
+          method: 'POST',
+          headers,
+          body: bodyText
+        });
+        
+        const responseData = await mcpResponse.text();
+        console.log(`✅ Proxied MCP call: ${body.method} - Status: ${mcpResponse.status}`);
+        console.log(`📋 Response data: ${responseData.substring(0, 200)}${responseData.length > 200 ? '...' : ''}`);
+        
+        const response = new Response(responseData, {
+          status: mcpResponse.status,
+          headers: {
+            'Content-Type': mcpResponse.headers.get('Content-Type') || 'application/json',
+            'Cache-Control': 'no-cache'
+          }
+        });
+        applyCORSHeaders(request as any, response, process.env.NODE_ENV as any);
+        return response;
+      } catch (fetchError) {
+        console.error('❌ Error forwarding to /api/mcp:', fetchError);
+        throw fetchError;
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error processing POST request to root:', error);
+    console.log('📝 Non-JSON or invalid POST request to root');
+  }
+
+  console.log('⚠️ POST request to root was not a valid MCP JSON-RPC call');
+  const response = NextResponse.json({
+    message: "Use GET for MCP discovery or POST with JSON-RPC 2.0 format"
+  }, {
+    status: 405,
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+  applyCORSHeaders(request as any, response, process.env.NODE_ENV as any);
+  return response;
+}
+
+async function handleRootOPTIONSInline(request: Request): Promise<Response> {
+  const response = new Response(null, {
+    status: 204,
+    headers: {}
+  });
+  applyCORSHeaders(request as any, response, process.env.NODE_ENV as any);
+  return response;
+}
 
 
 // API Key configuration interface
@@ -1548,6 +1741,31 @@ const createSecuredHandler = (originalHandler: (request: Request, context?: any)
   return async (request: Request, context?: any) => {
     const startTime = Date.now();
     let response: Response;
+    
+    // DEBUG: Log transport parameter to understand routing
+    console.log(`🚀 [transport] handler called with:`, {
+      method: request.method,
+      url: request.url,
+      transport: context?.params?.transport,
+      pathname: new URL(request.url).pathname
+    });
+    
+    // CRITICAL FIX: Handle root API calls when transport is empty/undefined
+    const transport = context?.params?.transport;
+    const url = new URL(request.url);
+    
+    console.log(`🚀 [transport] handler called with: transport="${transport}", pathname="${url.pathname}"`);
+    
+    // Only handle root requests, not /api/mcp which should use the MCP adapter
+    if ((!transport || transport === '' || url.pathname === '/api' || url.pathname === '/api/') && 
+        url.pathname !== '/api/mcp') {
+      console.log('🔄 [transport] handling ROOT API call - processing directly');
+      
+      // Handle root requests directly without dynamic import
+      return await handleRootRequestInline(request);
+    }
+    
+    console.log(`🔧 [transport] using MCP adapter for transport="${transport}"`);
     
     try {
       // Security: Store request context for logging

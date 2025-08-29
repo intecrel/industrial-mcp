@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server';
 import { validateAccessToken, TokenClaims } from './jwt';
 import { isToolAccessible } from './scopes';
-import { isOAuthEnabled } from './config';
+import { isOAuthEnabled, getEnvironmentType, isRedisEnabled } from './config';
 
 export interface AuthContext {
   method: 'oauth' | 'mac_address';

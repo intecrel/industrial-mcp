@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     
     try {
       // Register the client
-      const clientResponse: ClientRegistrationResponse = registerClient(registrationRequest);
+      const clientResponse: ClientRegistrationResponse = await registerClient(registrationRequest);
       
       console.log(`✅ OAuth client registered via API: ${clientResponse.client_name} (${clientResponse.client_id})`);
       
