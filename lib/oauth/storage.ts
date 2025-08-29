@@ -6,6 +6,7 @@
 
 import { Redis } from '@upstash/redis';
 import { OAuthClient } from './clients';
+import { RedisKeys, getEnvironmentInfo } from './redis-keys';
 
 export interface AuthCodeData {
   client_id: string;
@@ -58,12 +59,13 @@ class RedisStorageAdapter implements StorageAdapter {
       token
     });
     
-    console.log('✅ Redis storage adapter initialized');
+    const envInfo = getEnvironmentInfo();
+    console.log(`✅ Redis storage adapter initialized (${envInfo.environment})`, envInfo);
   }
   
   async setClient(clientId: string, client: OAuthClient): Promise<void> {
     try {
-      await this.redis.set(`oauth:client:${clientId}`, JSON.stringify(client));
+      await this.redis.set(RedisKeys.client(clientId), JSON.stringify(client));
       console.log(`📦 Client stored in Redis: ${clientId}`);
     } catch (error) {
       console.error(`❌ Redis setClient error:`, error);
@@ -73,7 +75,7 @@ class RedisStorageAdapter implements StorageAdapter {
   
   async getClient(clientId: string): Promise<OAuthClient | null> {
     try {
-      const data = await this.redis.get(`oauth:client:${clientId}`);
+      const data = await this.redis.get(RedisKeys.client(clientId));
       if (!data) {
         return null;
       }
@@ -99,7 +101,7 @@ class RedisStorageAdapter implements StorageAdapter {
   
   async getAllClients(): Promise<OAuthClient[]> {
     try {
-      const keys = await this.redis.keys('oauth:client:*');
+      const keys = await this.redis.keys(RedisKeys.clientPattern());
       if (keys.length === 0) {
         return [];
       }
@@ -127,7 +129,7 @@ class RedisStorageAdapter implements StorageAdapter {
   
   async deleteClient(clientId: string): Promise<void> {
     try {
-      await this.redis.del(`oauth:client:${clientId}`);
+      await this.redis.del(RedisKeys.client(clientId));
       console.log(`🗑️ Client deleted from Redis: ${clientId}`);
     } catch (error) {
       console.error(`❌ Redis deleteClient error:`, error);
@@ -137,7 +139,7 @@ class RedisStorageAdapter implements StorageAdapter {
   
   async setAuthCode(code: string, data: AuthCodeData, ttlSeconds: number): Promise<void> {
     try {
-      await this.redis.setex(`oauth:code:${code}`, ttlSeconds, JSON.stringify(data));
+      await this.redis.setex(RedisKeys.authCode(code), ttlSeconds, JSON.stringify(data));
       console.log(`🔐 Auth code stored in Redis with TTL ${ttlSeconds}s`);
     } catch (error) {
       console.error(`❌ Redis setAuthCode error:`, error);
@@ -147,7 +149,7 @@ class RedisStorageAdapter implements StorageAdapter {
   
   async getAuthCode(code: string): Promise<AuthCodeData | null> {
     try {
-      const data = await this.redis.get(`oauth:code:${code}`);
+      const data = await this.redis.get(RedisKeys.authCode(code));
       if (!data) {
         return null;
       }
@@ -173,7 +175,7 @@ class RedisStorageAdapter implements StorageAdapter {
   
   async deleteAuthCode(code: string): Promise<void> {
     try {
-      await this.redis.del(`oauth:code:${code}`);
+      await this.redis.del(RedisKeys.authCode(code));
       console.log(`🗑️ Auth code deleted from Redis`);
     } catch (error) {
       console.error(`❌ Redis deleteAuthCode error:`, error);
@@ -183,7 +185,7 @@ class RedisStorageAdapter implements StorageAdapter {
   
   async incrementRateLimit(clientId: string, window: string): Promise<number> {
     try {
-      const key = `oauth:rate:${clientId}:${window}`;
+      const key = RedisKeys.rateLimit(clientId, window);
       const count = await this.redis.incr(key);
       
       // Set TTL on first increment
@@ -200,7 +202,7 @@ class RedisStorageAdapter implements StorageAdapter {
   
   async getRateLimit(clientId: string, window: string): Promise<number> {
     try {
-      const count = await this.redis.get(`oauth:rate:${clientId}:${window}`);
+      const count = await this.redis.get(RedisKeys.rateLimit(clientId, window));
       return count ? parseInt(count as string, 10) : 0;
     } catch (error) {
       console.error(`❌ Redis getRateLimit error:`, error);
