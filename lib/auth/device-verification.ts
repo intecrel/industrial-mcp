@@ -57,18 +57,24 @@ export const createDeviceId = (fingerprint: DeviceFingerprint): string => {
 
 /**
  * Legacy MAC address verification (INSECURE - for backward compatibility)
+ * Supports comma-separated MAC address allowlist
  */
 export const verifyMacAddressLegacy = (userMacAddress: string): boolean => {
   console.log('⚠️ Using LEGACY MAC verification - trusts user input (INSECURE)');
   
-  const authorizedMac = process.env.MAC_ADDRESS;
-  if (!authorizedMac) {
+  const authorizedMacs = process.env.MAC_ADDRESS;
+  if (!authorizedMacs) {
     console.error('❌ No MAC address configured in environment');
     return false;
   }
   
-  const isValid = userMacAddress === authorizedMac;
+  // Support comma-separated MAC address allowlist
+  const macAllowlist = authorizedMacs.split(',').map(mac => mac.trim().toLowerCase());
+  const userMacLower = userMacAddress.trim().toLowerCase();
+  
+  const isValid = macAllowlist.includes(userMacLower);
   console.log(`${isValid ? '✅' : '❌'} Legacy MAC verification: ${userMacAddress} (user provided)`);
+  console.log(`📋 MAC allowlist: [${macAllowlist.join(', ')}]`);
   
   return isValid;
 };
@@ -96,17 +102,22 @@ export const verifyDeviceSecure = async (
   
   // For now, implement simple authorization logic
   // In production, this would check against a database of registered devices
-  const authorizedMac = process.env.MAC_ADDRESS;
-  if (!authorizedMac) {
+  const authorizedMacs = process.env.MAC_ADDRESS;
+  if (!authorizedMacs) {
     return {
       success: false,
       message: 'Server configuration error: No authorized MAC address configured'
     };
   }
   
-  // Check if user-provided MAC matches (for initial registration)
-  if (userMacAddress !== authorizedMac) {
-    console.log('❌ Device registration rejected: MAC address not authorized');
+  // Support comma-separated MAC address allowlist
+  const macAllowlist = authorizedMacs.split(',').map(mac => mac.trim().toLowerCase());
+  const userMacLower = userMacAddress.trim().toLowerCase();
+  
+  // Check if user-provided MAC matches allowlist (for initial registration)
+  if (!macAllowlist.includes(userMacLower)) {
+    console.log('❌ Device registration rejected: MAC address not in allowlist');
+    console.log(`📋 MAC allowlist: [${macAllowlist.join(', ')}], provided: ${userMacLower}`);
     return {
       success: false,
       message: 'Device not authorized. Please contact administrator for device registration.'

@@ -8,7 +8,7 @@ import { validateAccessToken, TokenClaims } from './jwt';
 import { isToolAccessible } from './scopes';
 import { isOAuthEnabled } from './config';
 import { isFeatureEnabled } from '@/lib/config/feature-flags';
-import { validateDeviceFromCookie, getDeviceInfo } from '@/lib/auth/device-verification';
+import { validateDeviceFromCookie, getDeviceInfo, verifyMacAddressLegacy } from '@/lib/auth/device-verification';
 
 export interface AuthContext {
   method: 'oauth' | 'mac_address';
@@ -140,9 +140,9 @@ export const authenticateMacAddressLegacy = async (request: NextRequest): Promis
       throw new Error('Invalid API key');
     }
     
-    // INSECURE: Trust client-provided MAC address header
-    const authorizedMac = process.env.MAC_ADDRESS;
-    if (!authorizedMac || macAddress !== authorizedMac) {
+    // INSECURE: Trust client-provided MAC address header (use allowlist)
+    const isValidMac = verifyMacAddressLegacy(macAddress);
+    if (!isValidMac) {
       throw new Error('Invalid MAC address');
     }
     
