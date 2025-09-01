@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server';
 import { validateAccessToken, TokenClaims } from './jwt';
 import { isToolAccessible } from './scopes';
-import { isOAuthEnabled, getEnvironmentType, isRedisEnabled } from './config';
+import { isOAuthEnabled } from './config';
 import { isFeatureEnabled } from '@/lib/config/feature-flags';
 import { validateDeviceFromCookie, getDeviceInfo } from '@/lib/auth/device-verification';
 
