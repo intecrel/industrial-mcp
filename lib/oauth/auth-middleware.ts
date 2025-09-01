@@ -6,7 +6,9 @@
 import { NextRequest } from 'next/server';
 import { validateAccessToken, TokenClaims } from './jwt';
 import { isToolAccessible } from './scopes';
-import { isOAuthEnabled, getEnvironmentType, isRedisEnabled } from './config';
+import { isOAuthEnabled } from './config';
+import { isFeatureEnabled } from '@/lib/config/feature-flags';
+import { validateDeviceFromCookie, getDeviceInfo, verifyMacAddressLegacy } from '@/lib/auth/device-verification';
 
 export interface AuthContext {
   method: 'oauth' | 'mac_address';
@@ -65,11 +67,64 @@ export const authenticateOAuth = async (request: NextRequest): Promise<AuthConte
 };
 
 /**
- * Authenticate request using existing MAC address + API key method
- * This delegates to the existing validation logic
+ * Authenticate request using secure device verification
+ * Uses device fingerprinting and secure cookie validation
  */
 export const authenticateMacAddress = async (request: NextRequest): Promise<AuthContext> => {
   try {
+    // Check if MAC verification module is enabled
+    if (!isFeatureEnabled('MAC_VERIFICATION')) {
+      // Fallback to legacy (insecure) MAC authentication when disabled
+      return await authenticateMacAddressLegacy(request);
+    }
+
+    const apiKey = request.headers.get('x-api-key');
+    
+    if (!apiKey) {
+      throw new Error('Missing x-api-key header');
+    }
+    
+    // Validate API key
+    const primaryKey = process.env.API_KEY;
+    if (!primaryKey || apiKey !== primaryKey) {
+      throw new Error('Invalid API key');
+    }
+    
+    // Use secure device validation instead of trusting headers
+    const isDeviceValid = validateDeviceFromCookie(request);
+    
+    if (!isDeviceValid) {
+      throw new Error('Device not verified. Please verify your device at the homepage first.');
+    }
+    
+    // Get device information for logging and context
+    const deviceInfo = getDeviceInfo(request);
+    const deviceId = request.cookies.get('mcp-device-id')?.value || deviceInfo.deviceId;
+    
+    console.log(`✅ Secure device authentication successful`, {
+      deviceId,
+      ip: deviceInfo.ip,
+      platform: deviceInfo.platform
+    });
+    
+    return {
+      method: 'mac_address',
+      userId: `device:${deviceId}`,
+      permissions: ['*'] // Device auth has access to all tools
+    };
+  } catch (error) {
+    throw new Error(`Device authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
+/**
+ * Legacy MAC authentication (INSECURE - trusts client headers)
+ * Only used when MAC_VERIFICATION feature flag is disabled
+ */
+export const authenticateMacAddressLegacy = async (request: NextRequest): Promise<AuthContext> => {
+  try {
+    console.log('⚠️ Using LEGACY MAC authentication - trusts client headers (INSECURE)');
+    
     const apiKey = request.headers.get('x-api-key');
     const macAddress = request.headers.get('x-mac-address');
     
@@ -77,31 +132,29 @@ export const authenticateMacAddress = async (request: NextRequest): Promise<Auth
       throw new Error('Missing x-api-key or x-mac-address header');
     }
     
-    // For now, we'll implement a simple validation that matches the existing pattern
-    // In a real scenario, we'd integrate with the existing validation logic
     const clientIP = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
     
-    // Basic API key validation (this would normally use the existing validateApiKey function)
+    // Basic API key validation
     const primaryKey = process.env.API_KEY;
     if (!primaryKey || apiKey !== primaryKey) {
       throw new Error('Invalid API key');
     }
     
-    // Basic MAC address validation 
-    const authorizedMac = process.env.MAC_ADDRESS;
-    if (!authorizedMac || macAddress !== authorizedMac) {
+    // INSECURE: Trust client-provided MAC address header (use allowlist)
+    const isValidMac = verifyMacAddressLegacy(macAddress);
+    if (!isValidMac) {
       throw new Error('Invalid MAC address');
     }
     
-    console.log(`✅ MAC address authentication successful for ${macAddress} from ${clientIP}`);
+    console.log(`⚠️ Legacy MAC address authentication for ${macAddress} from ${clientIP} (INSECURE)`);
     
     return {
       method: 'mac_address',
-      userId: 'primary', // This would normally come from the API key config
-      permissions: ['*'] // MAC address auth has access to all tools
+      userId: 'legacy-mac-user',
+      permissions: ['*']
     };
   } catch (error) {
-    throw new Error(`MAC address authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Legacy MAC address authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 
@@ -167,12 +220,20 @@ export const createAuthError = (message: string, statusCode: number = 401) => {
   if (isOAuthEnabled()) {
     authMethods.push('Bearer token (OAuth 2.1)');
   }
-  authMethods.push('API key + MAC address');
+  
+  // Show different MAC auth requirements based on feature flag
+  if (isFeatureEnabled('MAC_VERIFICATION')) {
+    authMethods.push('API key + verified MAC address (secure cookie required)');
+  } else {
+    authMethods.push('API key + MAC address header (legacy mode)');
+  }
   
   return {
     error: isUnauthorized ? 'authentication_required' : 'authorization_failed',
     message,
     supported_auth_methods: authMethods,
-    oauth_enabled: isOAuthEnabled()
+    oauth_enabled: isOAuthEnabled(),
+    mac_verification_enabled: isFeatureEnabled('MAC_VERIFICATION'),
+    verification_url: isFeatureEnabled('MAC_VERIFICATION') ? '/api/verify' : null
   };
 };
