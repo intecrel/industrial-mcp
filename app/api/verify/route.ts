@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { AUTH_CONFIG } from '../../../lib/config'
+import { verifyDevice, getDeviceInfo } from '../../../lib/auth/device-verification'
 
 // Utility to create a simple opaque token for the frontend
 const generateToken = () => crypto.randomUUID()
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   console.log('📨 Received POST to verification endpoint')
 
   try {
@@ -43,24 +44,28 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    // Check MAC address against configured value
-    if (!AUTH_CONFIG.MAC_ADDRESS) {
-      console.error('❌ No MAC address configured in environment')
-      return NextResponse.json({
-        success: false,
-        message: 'Server configuration error',
-        code: 'SERVER_CONFIG_ERROR'
-      }, { status: 500 })
-    }
+    // Use secure device verification system
+    const deviceVerification = await verifyDevice(
+      request,
+      body.macAddress,
+      body.deviceName, // Optional device name from client
+      body.clientData  // Optional client fingerprint data
+    );
 
-    if (body.macAddress === AUTH_CONFIG.MAC_ADDRESS) {
+    if (deviceVerification.success) {
       const token = generateToken()
+      const deviceInfo = getDeviceInfo(request);
 
       // Build response first so we can attach cookie
       const response = NextResponse.json({
         success: true,
-        message: 'MAC address verified successfully',
+        message: deviceVerification.message,
         token,
+        deviceId: deviceVerification.deviceId,
+        deviceInfo: {
+          platform: deviceInfo.platform,
+          deviceId: deviceInfo.deviceId
+        },
         timestamp: new Date().toISOString()
       })
 
@@ -75,13 +80,25 @@ export async function POST(request: Request) {
         maxAge: 24 * 60 * 60 // 24 hours
       })
 
-      console.log('✅ Verification successful, secure cookie set')
+      // Store device info in additional cookie for tracking
+      response.cookies.set({
+        name: 'mcp-device-id',
+        value: deviceVerification.deviceId || 'unknown',
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        maxAge: 24 * 60 * 60 // 24 hours
+      })
+
+      console.log('✅ Device verification successful, secure cookies set');
+      console.log('📱 Device info:', deviceInfo);
       return response
     } else {
-      console.log('❌ MAC address verification failed')
+      console.log('❌ Device verification failed:', deviceVerification.message)
       return NextResponse.json({
         success: false,
-        message: 'Invalid MAC address - device not authorized',
+        message: deviceVerification.message,
         code: 'UNAUTHORIZED_DEVICE'
       }, { status: 401 })
     }
