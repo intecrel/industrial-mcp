@@ -47,12 +47,15 @@ export const generateAccessToken = async (
   const config = getOAuthConfig();
   const now = Math.floor(Date.now() / 1000);
   
+  // Add 30-second buffer for clock skew and connection stability
+  const clockSkewBuffer = 30;
+  
   const claims: TokenClaims = {
     iss: config.issuer,
     sub: clientId,
     aud: config.issuer, // API identifier
     exp: now + config.accessTokenTtl,
-    iat: now,
+    iat: now - clockSkewBuffer, // Issue token slightly in past for clock skew
     scope: scopes.join(' '),
     client_id: clientId,
     token_type: 'access_token'

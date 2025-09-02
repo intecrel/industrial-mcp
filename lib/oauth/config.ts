@@ -58,7 +58,7 @@ export const getOAuthConfig = (): OAuthConfig => {
     supportedScopes: ['mcp:tools', 'mcp:resources', 'mcp:prompts', 'claudeai'],
     jwtSecret: process.env.OAUTH_JWT_SECRET || 'dev-secret-change-in-production',
     jwtAlgorithm: 'HS256', // Using symmetric for simplicity, can upgrade to RS256 later
-    accessTokenTtl: 3600, // 1 hour
+    accessTokenTtl: 86400, // 24 hours (extended for MCP client stability)
     authCodeTtl: 600, // 10 minutes
   };
 };
