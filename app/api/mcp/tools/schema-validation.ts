@@ -16,18 +16,28 @@ export const CommonSchemas = {
   // Site ID validation
   siteId: z.number().int().min(1),
   
-  // SQL injection prevention - basic patterns
+  // SQL injection prevention - using word boundaries to avoid false positives
   sqlSafeString: z.string().refine(
-    (val) => !val.toLowerCase().includes('drop') && 
-             !val.toLowerCase().includes('delete') && 
-             !val.toLowerCase().includes('update') && 
-             !val.toLowerCase().includes('insert') && 
-             !val.toLowerCase().includes('alter') && 
-             !val.toLowerCase().includes('create') && 
-             !val.toLowerCase().includes('truncate') &&
-             !val.includes(';') &&
-             !val.includes('--') &&
-             !val.includes('/*'),
+    (val) => {
+      const lowerVal = val.toLowerCase();
+      const dangerousPatterns = [
+        /\bdrop\b/,
+        /\bdelete\b/,
+        /\bupdate\b/,
+        /\binsert\b/,
+        /\balter\b/,
+        /\bcreate\s+(table|index|view|database|schema)\b/, // Only CREATE followed by object types
+        /\btruncate\b/
+      ];
+      
+      // Check SQL keywords with word boundaries
+      const hasDangerousKeyword = dangerousPatterns.some(pattern => pattern.test(lowerVal));
+      
+      // Check other dangerous patterns
+      const hasOtherDangerous = val.includes(';') || val.includes('--') || val.includes('/*');
+      
+      return !hasDangerousKeyword && !hasOtherDangerous;
+    },
     { message: 'String contains potentially dangerous SQL patterns' }
   ),
   
