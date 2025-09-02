@@ -73,8 +73,7 @@ export async function exploreDatabaseStructure(options: ExploreOptions) {
         }
         
         const sampleResult = await connection.query(
-          `SELECT * FROM \`${table_name}\` LIMIT ?`, 
-          [Math.min(limit, 100)] // Cap at 100 for safety
+          `SELECT * FROM \`${table_name}\` LIMIT ${Math.min(limit, 100)}` // Direct interpolation for safety
         )
         
         return {
