@@ -856,7 +856,7 @@ export async function POST(request: NextRequest) {
           const result = await getOrganizationalStructure({
             department: args.department,
             depth: args.depth || 3,
-            include_employees: args.include_employees || false
+            includeEmployees: args.include_employees || false
           });
           
           return NextResponse.json({
@@ -905,9 +905,9 @@ export async function POST(request: NextRequest) {
           const { findCapabilityPaths } = await import('./tools/neo4j-knowledge-graph');
           const result = await findCapabilityPaths({
             skill: args.skill,
-            source_employee: args.source_employee,
-            target_role: args.target_role,
-            max_hops: args.max_hops || 4
+            sourceEmployee: args.source_employee,
+            targetRole: args.target_role,
+            maxHops: args.max_hops || 4
           });
           
           return NextResponse.json({
