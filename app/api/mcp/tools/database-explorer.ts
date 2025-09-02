@@ -73,8 +73,7 @@ export async function exploreDatabaseStructure(options: ExploreOptions) {
         }
         
         const sampleResult = await connection.query(
-          `SELECT * FROM \`${table_name}\` LIMIT ?`, 
-          [Math.min(limit, 100)] // Cap at 100 for safety
+          `SELECT * FROM \`${table_name}\` LIMIT ${Math.min(limit, 100)}` // Direct interpolation for safety
         )
         
         return {
@@ -109,11 +108,20 @@ export async function executeCustomQuery(options: QueryOptions) {
       throw new Error('Only SELECT queries are allowed for security reasons')
     }
     
-    // Check for dangerous patterns
-    const dangerousPatterns = ['drop', 'delete', 'update', 'insert', 'alter', 'create', 'truncate']
+    // Check for dangerous patterns using word boundaries to avoid false positives
+    const dangerousPatterns = [
+      /\bdrop\b/i,
+      /\bdelete\b/i,
+      /\bupdate\b/i,
+      /\binsert\b/i,
+      /\balter\b/i,
+      /\bcreate\s+(table|index|view|database|schema)\b/i, // Only CREATE followed by object types
+      /\btruncate\b/i
+    ]
     for (const pattern of dangerousPatterns) {
-      if (trimmedQuery.includes(pattern)) {
-        throw new Error(`Query contains potentially dangerous operation: ${pattern}`)
+      if (pattern.test(trimmedQuery)) {
+        const match = trimmedQuery.match(pattern)
+        throw new Error(`Query contains potentially dangerous operation: ${match?.[0] || 'unknown'}`)
       }
     }
     

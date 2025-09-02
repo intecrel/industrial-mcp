@@ -293,7 +293,9 @@ export class MySQLConnection extends BaseDatabaseConnection {
       }
 
       // Execute query using pool
-      const [rows, fields] = await this.pool.execute(sql, sanitizedParams) as [any[], mysql.FieldPacket[]]
+      const [rows, fields] = sanitizedParams.length > 0 
+        ? await this.pool.execute(sql, sanitizedParams) as [any[], mysql.FieldPacket[]]
+        : await this.pool.query(sql) as [any[], mysql.FieldPacket[]]
       
       // Handle different result types
       let affectedRows = 0

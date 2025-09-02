@@ -556,8 +556,8 @@ export async function POST(request: NextRequest) {
       if (name === 'explore_database') {
         console.log('🗃️ EXPLORE_DATABASE called:', args)
         try {
-          // Import the database explorer from the backup
-          const { exploreDatabaseStructure } = await import('../../../backup-complex-implementation/mcp/tools/database-explorer');
+          // Use the actual database explorer implementation
+          const { exploreDatabaseStructure } = await import('./tools/database-explorer');
           const result = await exploreDatabaseStructure({ 
             action: args.action, 
             table_name: args.table_name, 
@@ -606,8 +606,8 @@ export async function POST(request: NextRequest) {
       if (name === 'query_database') {
         console.log('🔍 QUERY_DATABASE called:', args)
         try {
-          // Import the database query function from the backup
-          const { executeCustomQuery } = await import('../../../backup-complex-implementation/mcp/tools/database-explorer');
+          // Use the actual database query implementation
+          const { executeCustomQuery } = await import('./tools/database-explorer');
           const result = await executeCustomQuery({ 
             query: args.query, 
             limit: args.limit || 100
@@ -655,8 +655,8 @@ export async function POST(request: NextRequest) {
       if (name === 'analyze_data') {
         console.log('📊 ANALYZE_DATA called:', args)
         try {
-          // Import the data analysis function from the backup
-          const { analyzeTableData } = await import('../../../backup-complex-implementation/mcp/tools/database-explorer');
+          // Use the actual data analysis implementation
+          const { analyzeTableData } = await import('./tools/database-explorer');
           const result = await analyzeTableData({ 
             table_name: args.table_name,
             analysis_type: args.analysis_type,
@@ -706,8 +706,8 @@ export async function POST(request: NextRequest) {
       if (name === 'get_cloud_sql_status') {
         console.log('☁️ GET_CLOUD_SQL_STATUS called:', args)
         try {
-          // Import the Cloud SQL status function from the backup
-          const { getCloudSQLStatus } = await import('../../../backup-complex-implementation/mcp/tools/cloud-sql-status');
+          // Use the actual Cloud SQL status implementation
+          const { getCloudSQLStatus } = await import('./tools/cloud-sql-status');
           const result = await getCloudSQLStatus({ 
             database: args.database,
             include_details: args.include_details
@@ -755,8 +755,8 @@ export async function POST(request: NextRequest) {
       if (name === 'get_cloud_sql_info') {
         console.log('ℹ️ GET_CLOUD_SQL_INFO called:', args)
         try {
-          // Import the Cloud SQL info function from the backup
-          const { getCloudSQLSystemInfo } = await import('../../../backup-complex-implementation/mcp/tools/cloud-sql-status');
+          // Use the actual Cloud SQL info implementation
+          const { getCloudSQLSystemInfo } = await import('./tools/cloud-sql-status');
           const result = await getCloudSQLSystemInfo();
           
           return NextResponse.json({
@@ -801,21 +801,13 @@ export async function POST(request: NextRequest) {
       if (name === 'query_knowledge_graph') {
         console.log('🕸️ QUERY_KNOWLEDGE_GRAPH called:', args)
         try {
-          // Simple Neo4j knowledge graph query implementation
-          const { getGlobalDatabaseManager } = await import('../../../lib/database');
-          const dbManager = await getGlobalDatabaseManager();
-          
-          // Get Neo4j connection
-          const neo4jConnection = dbManager.getConnection('neo4j');
-          if (!neo4jConnection) {
-            throw new Error('Neo4j connection not available');
-          }
-          
-          // Execute the query with parameters
-          const result = await neo4jConnection.query(
-            args.query, 
-            args.parameters || {}
-          );
+          // Use the actual Neo4j knowledge graph implementation
+          const { queryKnowledgeGraph } = await import('./tools/neo4j-knowledge-graph');
+          const result = await queryKnowledgeGraph({
+            query: args.query,
+            parameters: args.parameters || {},
+            limit: args.limit || 100
+          });
           
           return NextResponse.json({
             jsonrpc: "2.0",
@@ -824,13 +816,7 @@ export async function POST(request: NextRequest) {
               content: [
                 {
                   type: "text",
-                  text: JSON.stringify({
-                    query: args.query,
-                    parameters: args.parameters || {},
-                    results: result.data || [],
-                    records_returned: result.data?.length || 0,
-                    timestamp: new Date().toISOString()
-                  }, null, 2)
+                  text: JSON.stringify(result, null, 2)
                 }
               ]
             }
@@ -865,25 +851,13 @@ export async function POST(request: NextRequest) {
       if (name === 'get_organizational_structure') {
         console.log('🏢 GET_ORGANIZATIONAL_STRUCTURE called:', args)
         try {
-          // Simple organizational structure query implementation
-          const { getGlobalDatabaseManager } = await import('../../../lib/database');
-          const dbManager = await getGlobalDatabaseManager();
-          const neo4jConnection = dbManager.getConnection('neo4j');
-          
-          if (!neo4jConnection) {
-            throw new Error('Neo4j connection not available');
-          }
-          
-          // Basic organizational query
-          const query = `
-            MATCH (dept:Department)
-            OPTIONAL MATCH (dept)-[:REPORTS_TO*0..${args.depth || 3}]->(parent:Department)
-            OPTIONAL MATCH (emp:Employee)-[:WORKS_IN]->(dept)
-            RETURN dept, parent, ${args.include_employees ? 'collect(emp) as employees' : 'null as employees'}
-            ORDER BY dept.name
-          `;
-          
-          const result = await neo4jConnection.query(query, {});
+          // Use the actual organizational structure implementation
+          const { getOrganizationalStructure } = await import('./tools/neo4j-knowledge-graph');
+          const result = await getOrganizationalStructure({
+            department: args.department,
+            depth: args.depth || 3,
+            includeEmployees: args.include_employees || false
+          });
           
           return NextResponse.json({
             jsonrpc: "2.0",
@@ -892,14 +866,7 @@ export async function POST(request: NextRequest) {
               content: [
                 {
                   type: "text",
-                  text: JSON.stringify({
-                    department: args.department,
-                    depth: args.depth || 3,
-                    include_employees: args.include_employees || false,
-                    results: result.data || [],
-                    records_returned: result.data?.length || 0,
-                    timestamp: new Date().toISOString()
-                  }, null, 2)
+                  text: JSON.stringify(result, null, 2)
                 }
               ]
             }
@@ -934,25 +901,14 @@ export async function POST(request: NextRequest) {
       if (name === 'find_capability_paths') {
         console.log('🛤️ FIND_CAPABILITY_PATHS called:', args)
         try {
-          // Simple capability paths query implementation
-          const { getGlobalDatabaseManager } = await import('../../../lib/database');
-          const dbManager = await getGlobalDatabaseManager();
-          const neo4jConnection = dbManager.getConnection('neo4j');
-          
-          if (!neo4jConnection) {
-            throw new Error('Neo4j connection not available');
-          }
-          
-          // Basic skill/capability query
-          const query = `
-            MATCH (skill:Skill {name: $skill})
-            OPTIONAL MATCH path = (emp:Employee)-[:HAS_SKILL]->(skill)
-            OPTIONAL MATCH (emp)-[:WORKS_IN]->(dept:Department)
-            RETURN skill, emp, dept, path
-            LIMIT ${args.max_hops * 10 || 40}
-          `;
-          
-          const result = await neo4jConnection.query(query, { skill: args.skill });
+          // Use the actual capability paths implementation
+          const { findCapabilityPaths } = await import('./tools/neo4j-knowledge-graph');
+          const result = await findCapabilityPaths({
+            skill: args.skill,
+            sourceEmployee: args.source_employee,
+            targetRole: args.target_role,
+            maxHops: args.max_hops || 4
+          });
           
           return NextResponse.json({
             jsonrpc: "2.0",
@@ -961,15 +917,7 @@ export async function POST(request: NextRequest) {
               content: [
                 {
                   type: "text",
-                  text: JSON.stringify({
-                    skill: args.skill,
-                    source_employee: args.source_employee,
-                    target_role: args.target_role,
-                    max_hops: args.max_hops || 4,
-                    results: result.data || [],
-                    records_returned: result.data?.length || 0,
-                    timestamp: new Date().toISOString()
-                  }, null, 2)
+                  text: JSON.stringify(result, null, 2)
                 }
               ]
             }
@@ -1004,29 +952,13 @@ export async function POST(request: NextRequest) {
       if (name === 'get_visitor_analytics') {
         console.log('📈 GET_VISITOR_ANALYTICS called:', args)
         try {
-          // Simple visitor analytics query implementation
-          const { getGlobalDatabaseManager } = await import('../../../lib/database');
-          const dbManager = await getGlobalDatabaseManager();
-          const connection = dbManager.getConnection();
-          
-          if (connection.type !== 'mysql') {
-            throw new Error('MySQL connection required for visitor analytics');
-          }
-          
-          // Basic visitor query for Matomo
-          const query = `
-            SELECT 
-              COUNT(DISTINCT idvisitor) as unique_visitors,
-              COUNT(*) as total_visits,
-              DATE(visit_first_action_time) as visit_date
-            FROM matomo_log_visit 
-            WHERE visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-            GROUP BY DATE(visit_first_action_time)
-            ORDER BY visit_date DESC
-            LIMIT ?
-          `;
-          
-          const result = await connection.query(query, [args.limit || 100]);
+          // Use the actual visitor analytics implementation
+          const { getVisitorAnalytics } = await import('./tools/mysql-analytics-tools');
+          const result = await getVisitorAnalytics({
+            date_range: args.date_range || 'last_7_days',
+            site_id: args.site_id,
+            limit: args.limit || 100
+          });
           
           return NextResponse.json({
             jsonrpc: "2.0",
@@ -1035,13 +967,7 @@ export async function POST(request: NextRequest) {
               content: [
                 {
                   type: "text",
-                  text: JSON.stringify({
-                    date_range: args.date_range || 'last_7_days',
-                    site_id: args.site_id,
-                    results: result.data || [],
-                    records_returned: result.data?.length || 0,
-                    timestamp: new Date().toISOString()
-                  }, null, 2)
+                  text: JSON.stringify(result, null, 2)
                 }
               ]
             }
@@ -1076,24 +1002,14 @@ export async function POST(request: NextRequest) {
       if (name === 'get_conversion_metrics') {
         console.log('🎯 GET_CONVERSION_METRICS called:', args)
         try {
-          // Simple conversion metrics implementation
-          const { getGlobalDatabaseManager } = await import('../../../lib/database');
-          const dbManager = await getGlobalDatabaseManager();
-          const connection = dbManager.getConnection();
-          
-          const query = `
-            SELECT 
-              COUNT(*) as total_conversions,
-              DATE(server_time) as conversion_date,
-              idgoal
-            FROM matomo_log_conversion 
-            WHERE server_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-            GROUP BY DATE(server_time), idgoal
-            ORDER BY conversion_date DESC
-            LIMIT ?
-          `;
-          
-          const result = await connection.query(query, [args.limit || 50]);
+          // Use the actual conversion metrics implementation
+          const { getConversionMetrics } = await import('./tools/mysql-analytics-tools');
+          const result = await getConversionMetrics({
+            date_range: args.date_range || 'last_30_days',
+            site_id: args.site_id,
+            goal_id: args.goal_id,
+            limit: args.limit || 50
+          });
           
           return NextResponse.json({
             jsonrpc: "2.0",
@@ -1102,12 +1018,7 @@ export async function POST(request: NextRequest) {
               content: [
                 {
                   type: "text",
-                  text: JSON.stringify({
-                    date_range: args.date_range || 'last_30_days',
-                    results: result.data || [],
-                    records_returned: result.data?.length || 0,
-                    timestamp: new Date().toISOString()
-                  }, null, 2)
+                  text: JSON.stringify(result, null, 2)
                 }
               ]
             }
@@ -1142,25 +1053,14 @@ export async function POST(request: NextRequest) {
       if (name === 'get_content_performance') {
         console.log('📊 GET_CONTENT_PERFORMANCE called:', args)
         try {
-          // Simple content performance implementation
-          const { getGlobalDatabaseManager } = await import('../../../lib/database');
-          const dbManager = await getGlobalDatabaseManager();
-          const connection = dbManager.getConnection();
-          
-          const query = `
-            SELECT 
-              url,
-              COUNT(*) as page_views,
-              COUNT(DISTINCT idvisitor) as unique_visitors
-            FROM matomo_log_link_visit_action la
-            JOIN matomo_log_visit v ON la.idvisit = v.idvisit
-            WHERE la.server_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-            GROUP BY url
-            ORDER BY page_views DESC
-            LIMIT ?
-          `;
-          
-          const result = await connection.query(query, [args.limit || 50]);
+          // Use the actual content performance implementation
+          const { getContentPerformance } = await import('./tools/mysql-analytics-tools');
+          const result = await getContentPerformance({
+            date_range: args.date_range || 'last_30_days',
+            site_id: args.site_id,
+            content_type: args.content_type || 'pages',
+            limit: args.limit || 50
+          });
           
           return NextResponse.json({
             jsonrpc: "2.0",
@@ -1169,13 +1069,7 @@ export async function POST(request: NextRequest) {
               content: [
                 {
                   type: "text",
-                  text: JSON.stringify({
-                    date_range: args.date_range || 'last_30_days',
-                    content_type: args.content_type || 'pages',
-                    results: result.data || [],
-                    records_returned: result.data?.length || 0,
-                    timestamp: new Date().toISOString()
-                  }, null, 2)
+                  text: JSON.stringify(result, null, 2)
                 }
               ]
             }
@@ -1207,98 +1101,16 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Handle remaining 6 tools with simplified implementations
-      if (['query_matomo_database', 'get_company_intelligence', 'get_unified_dashboard_data', 'correlate_operational_relationships', 'get_knowledge_graph_stats', 'get_usage_analytics'].includes(name)) {
-        console.log(`🔧 ${name.toUpperCase()} called:`, args)
+      // Handle remaining analytics tools individually
+      if (name === 'query_matomo_database') {
+        console.log('🔍 QUERY_MATOMO_DATABASE called:', args)
         try {
-          const { getGlobalDatabaseManager } = await import('../../../lib/database');
-          const dbManager = await getGlobalDatabaseManager();
-          let result = {};
-          
-          if (name === 'query_matomo_database') {
-            const connection = dbManager.getConnection();
-            const queryResult = await connection.query(args.query, args.parameters || []);
-            result = {
-              query: args.query,
-              results: queryResult.data || [],
-              records_returned: queryResult.data?.length || 0
-            };
-          }
-          else if (name === 'get_company_intelligence') {
-            const connection = dbManager.getConnection();
-            const query = `SELECT location_country, COUNT(*) as visits FROM matomo_log_visit WHERE visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY location_country LIMIT ?`;
-            const queryResult = await connection.query(query, [args.limit || 50]);
-            result = {
-              company_intelligence: queryResult.data || [],
-              date_range: args.date_range || 'last_30_days'
-            };
-          }
-          else if (name === 'get_unified_dashboard_data') {
-            // Simplified unified dashboard
-            const connection = dbManager.getConnection();
-            const analyticsQuery = `SELECT COUNT(*) as total_visits FROM matomo_log_visit WHERE visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)`;
-            const analyticsResult = await connection.query(analyticsQuery, []);
-            
-            const neo4jConnection = dbManager.getConnection('neo4j');
-            const operationalQuery = `MATCH (n) RETURN count(n) as total_nodes LIMIT 1`;
-            const operationalResult = neo4jConnection ? await neo4jConnection.query(operationalQuery, {}) : null;
-            
-            result = {
-              web_analytics: analyticsResult.data || [],
-              operational_data: operationalResult?.data || [],
-              unified_metrics: { total_data_sources: 2 }
-            };
-          }
-          else if (name === 'correlate_operational_relationships') {
-            // Simplified correlation
-            const neo4jConnection = dbManager.getConnection('neo4j');
-            if (neo4jConnection) {
-              const query = `MATCH (e:${args.entity_type || 'Company'}) RETURN e LIMIT ${args.limit || 30}`;
-              const queryResult = await neo4jConnection.query(query, {});
-              result = {
-                correlation_type: args.correlation_type || 'company_to_operations',
-                entity_type: args.entity_type || 'Company',
-                correlations: queryResult.data || []
-              };
-            } else {
-              result = { error: 'Neo4j connection not available' };
-            }
-          }
-          else if (name === 'get_knowledge_graph_stats') {
-            const neo4jConnection = dbManager.getConnection('neo4j');
-            if (neo4jConnection) {
-              const nodeQuery = `MATCH (n) RETURN count(n) as total_nodes`;
-              const relQuery = `MATCH ()-[r]->() RETURN count(r) as total_relationships`;
-              const nodes = await neo4jConnection.query(nodeQuery, {});
-              const rels = await neo4jConnection.query(relQuery, {});
-              result = {
-                statistics: {
-                  total_nodes: nodes.data?.[0]?.total_nodes || 0,
-                  total_relationships: rels.data?.[0]?.total_relationships || 0
-                }
-              };
-            } else {
-              result = { error: 'Neo4j connection not available' };
-            }
-          }
-          else if (name === 'get_usage_analytics') {
-            // Simplified usage analytics implementation
-            result = {
-              usage_analytics: {
-                period_hours: args.period_hours || 24,
-                user_id: args.user_id || 'all_users',
-                total_requests: 0,
-                unique_users: 0,
-                top_tools: ['echo', 'query_database', 'get_visitor_analytics'],
-                request_volume: Array.from({length: 24}, (_, i) => ({
-                  hour: i,
-                  requests: Math.floor(Math.random() * 50)
-                })),
-                status: 'analytics_available',
-                note: 'Simplified analytics - full tracking not implemented'
-              }
-            };
-          }
+          const { queryMatomoDatabase } = await import('./tools/mysql-analytics-tools');
+          const result = await queryMatomoDatabase({
+            query: args.query,
+            parameters: args.parameters || [],
+            limit: args.limit || 100
+          });
           
           return NextResponse.json({
             jsonrpc: "2.0",
@@ -1307,11 +1119,7 @@ export async function POST(request: NextRequest) {
               content: [
                 {
                   type: "text",
-                  text: JSON.stringify({
-                    tool_name: name,
-                    ...result,
-                    timestamp: new Date().toISOString()
-                  }, null, 2)
+                  text: JSON.stringify(result, null, 2)
                 }
               ]
             }
@@ -1322,7 +1130,7 @@ export async function POST(request: NextRequest) {
             }
           })
         } catch (error) {
-          console.error(`❌ ${name} error:`, error)
+          console.error('❌ Matomo database query error:', error)
           return NextResponse.json({
             jsonrpc: "2.0",
             id,
@@ -1330,7 +1138,267 @@ export async function POST(request: NextRequest) {
               content: [
                 {
                   type: "text",
-                  text: `${name} error: ${error instanceof Error ? error.message : String(error)}`
+                  text: `Matomo database query error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'get_company_intelligence') {
+        console.log('🏢 GET_COMPANY_INTELLIGENCE called:', args)
+        try {
+          const { getCompanyIntelligence } = await import('./tools/mysql-analytics-tools');
+          const result = await getCompanyIntelligence({
+            date_range: args.date_range || 'last_30_days',
+            company_name: args.company_name,
+            domain: args.domain,
+            country: args.country,
+            site_id: args.site_id,
+            limit: args.limit || 50
+          });
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Company intelligence error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Company intelligence error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'get_unified_dashboard_data') {
+        console.log('📊 GET_UNIFIED_DASHBOARD_DATA called:', args)
+        try {
+          const { getUnifiedDashboardData } = await import('./tools/cross-database-tools');
+          const result = await getUnifiedDashboardData({
+            company_name: args.company_name,
+            date_range: args.date_range || 'last_30_days',
+            site_id: args.site_id,
+            include_web_analytics: args.include_web_analytics,
+            include_operational_data: args.include_operational_data,
+            limit: args.limit || 50
+          });
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Unified dashboard error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Unified dashboard error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'correlate_operational_relationships') {
+        console.log('🔗 CORRELATE_OPERATIONAL_RELATIONSHIPS called:', args)
+        try {
+          const { correlateOperationalRelationships } = await import('./tools/cross-database-tools');
+          const result = await correlateOperationalRelationships({
+            entity_type: args.entity_type || 'Company',
+            entity_name: args.entity_name,
+            website_domain: args.website_domain,
+            date_range: args.date_range || 'last_30_days',
+            correlation_type: args.correlation_type || 'company_to_operations',
+            limit: args.limit || 30
+          });
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Operational correlation error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Operational correlation error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'get_knowledge_graph_stats') {
+        console.log('📈 GET_KNOWLEDGE_GRAPH_STATS called:', args)
+        try {
+          const { getKnowledgeGraphStats } = await import('./tools/neo4j-knowledge-graph');
+          const result = await getKnowledgeGraphStats();
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Knowledge graph stats error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Knowledge graph stats error: ${error instanceof Error ? error.message : String(error)}`
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        }
+      }
+
+      if (name === 'get_usage_analytics') {
+        console.log('📊 GET_USAGE_ANALYTICS called:', args)
+        try {
+          // This tool is admin-only and simplified for now
+          const result = {
+            usage_analytics: {
+              period_hours: args.period_hours || 24,
+              user_id: args.user_id || 'all_users',
+              total_requests: 0,
+              unique_users: 0,
+              top_tools: ['echo', 'query_database', 'get_visitor_analytics'],
+              request_volume: Array.from({length: 24}, (_, i) => ({
+                hour: i,
+                requests: Math.floor(Math.random() * 50)
+              })),
+              status: 'analytics_available',
+              note: 'Simplified analytics - full tracking not implemented'
+            }
+          };
+          
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+        } catch (error) {
+          console.error('❌ Usage analytics error:', error)
+          return NextResponse.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: `Usage analytics error: ${error instanceof Error ? error.message : String(error)}`
                 }
               ]
             }
