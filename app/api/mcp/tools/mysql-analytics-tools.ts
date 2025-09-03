@@ -521,26 +521,26 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
     const conditions = ['lv.idsite IS NOT NULL'] // Always use indexed column
     const parameters = []
     
-    // Limit date range for performance - use indexed visit_first_action_time
+    // Use indexed visit_last_action_time (part of index_idsite_datetime)
     switch (date_range) {
       case 'today':
-        conditions.push('lv.visit_first_action_time >= CURDATE()')
+        conditions.push('lv.visit_last_action_time >= CURDATE()')
         break
       case 'yesterday':
-        conditions.push('lv.visit_first_action_time >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)')
-        conditions.push('lv.visit_first_action_time < CURDATE()')
+        conditions.push('lv.visit_last_action_time >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)')
+        conditions.push('lv.visit_last_action_time < CURDATE()')
         break
       case 'last_7_days':
-        conditions.push('lv.visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)')
+        conditions.push('lv.visit_last_action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)')
         break
       case 'last_30_days':
-        conditions.push('lv.visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)')
+        conditions.push('lv.visit_last_action_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)')
         break
       case 'current_month':
-        conditions.push('lv.visit_first_action_time >= DATE_FORMAT(NOW(), "%Y-%m-01")')
+        conditions.push('lv.visit_last_action_time >= DATE_FORMAT(NOW(), "%Y-%m-01")')
         break
       default:
-        conditions.push('lv.visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)') // Shorter default for performance
+        conditions.push('lv.visit_last_action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)') // Shorter default for performance
     }
     
     // Use indexed idsite column for site filtering
@@ -551,31 +551,26 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
     
     const whereClause = `WHERE ${conditions.join(' AND ')}`
     
-    // Simplified, fast query focusing on core metrics with minimal JOINs
+    // Ultra-fast query using Matomo's indexed columns (idsite + visit_first_action_time)
     const quickQuery = `
       SELECT 
         lv.location_country as country,
-        lv.location_city as city,
-        lv.location_ip as ip_address,
-        COUNT(DISTINCT lv.idvisit) as total_visits,
+        COUNT(*) as total_visits,
         COUNT(DISTINCT lv.idvisitor) as unique_visitors,
         MAX(lv.visit_last_action_time) as last_visit,
-        MIN(lv.visit_first_action_time) as first_visit,
-        AVG(lv.visit_total_time) as avg_session_duration,
-        SUM(lv.visit_total_actions) as total_page_views,
-        AVG(lv.visit_total_actions) as avg_pages_per_visit,
-        SUM(CASE WHEN lv.visitor_returning = 1 THEN 1 ELSE 0 END) as returning_visits
+        ROUND(AVG(lv.visit_total_time), 0) as avg_session_duration
       FROM matomo_log_visit lv
       ${whereClause}
         AND lv.location_country IS NOT NULL 
         AND lv.location_country != ''
-      GROUP BY lv.location_country, lv.location_city, lv.location_ip
-      HAVING total_visits >= 2  -- Focus on engaged visitors
-      ORDER BY total_visits DESC, last_visit DESC
-      LIMIT ${Math.min(limit, 20)}  -- Reduced limit for performance
+      GROUP BY lv.location_country
+      ORDER BY total_visits DESC
+      LIMIT ${Math.min(limit, 10)}
     `
     
-    console.log('🔍 Executing fast company intelligence query...')
+    console.log('🔍 Executing OPTIMIZED company intelligence query...')
+    console.log('📝 Query:', quickQuery.replace(/\s+/g, ' ').trim())
+    console.log('📝 Parameters:', JSON.stringify(parameters))
     const startTime = Date.now()
     
     // Execute with timeout protection
@@ -589,16 +584,13 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
     const executionTime = Date.now() - startTime
     console.log(`⚡ Query completed in ${executionTime}ms`)
     
-    // Get basic summary
+    // Get basic summary using indexed conditions only
     const summaryQuery = `
       SELECT 
-        COUNT(DISTINCT lv.idvisit) as total_visits,
-        COUNT(DISTINCT lv.idvisitor) as unique_visitors,
-        COUNT(DISTINCT lv.location_country) as countries_count,
-        AVG(lv.visit_total_time) as avg_session_duration
+        COUNT(*) as total_visits,
+        COUNT(DISTINCT lv.idvisitor) as unique_visitors
       FROM matomo_log_visit lv
       ${whereClause}
-        AND lv.location_country IS NOT NULL
       LIMIT 1
     `
     
