@@ -386,6 +386,9 @@ export class DatabaseManager {
       defaultConnection = 'cloud_sql_primary'
     } else if (connections.cloud_sql_staging && process.env.NODE_ENV !== 'production') {
       defaultConnection = 'cloud_sql_staging'
+    } else if (connections.mysql && process.env.NODE_ENV !== 'production') {
+      // Use local MySQL connection in development
+      defaultConnection = 'mysql'
     }
     
 

@@ -56,9 +56,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/samdurso/industrial-mcp.git"
+    "url": "https://github.com/intecrel/industrial-mcp.git"
   },
-  "homepage": "https://github.com/samdurso/industrial-mcp#readme",
+  "homepage": "https://github.com/intecrel/industrial-mcp#readme",
   "engines": {
     "node": ">=18.0.0"
   }
