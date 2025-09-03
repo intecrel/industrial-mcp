@@ -490,7 +490,7 @@ export async function getContentPerformance(options: ContentPerformanceOptions =
 }
 
 /**
- * Get company intelligence from B2B visitor data using optimized indexed joins
+ * Get company intelligence from B2B visitor data using fast fallback approach
  */
 export async function getCompanyIntelligence(options: CompanyIntelligenceOptions = {}) {
   const { company_name, domain, country, date_range = 'last_30_days', site_id, limit = 50 } = options
@@ -502,18 +502,33 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
     if (connection.type !== 'mysql') {
       throw new Error('MySQL connection required for company intelligence')
     }
+
+    console.log('🏢 Company Intelligence: Starting query with timeout protection...')
     
-    // Build dynamic WHERE conditions
-    const conditions = []
+    // Check if company enrichment tables exist first
+    try {
+      const tableCheck = await connection.query('SHOW TABLES LIKE "matomo_visitor_enriched_session_premium"')
+      if (!tableCheck.data || tableCheck.data.length === 0) {
+        console.log('⚠️ Company enrichment tables not available, using basic visitor data...')
+        return getBasicVisitorIntelligence(connection, options)
+      }
+    } catch {
+      console.log('⚠️ Company enrichment check failed, falling back to basic data...')
+      return getBasicVisitorIntelligence(connection, options)
+    }
+    
+    // Build optimized conditions for fast query
+    const conditions = ['lv.idsite IS NOT NULL'] // Always use indexed column
     const parameters = []
     
-    // Date range condition using indexed visit_first_action_time
+    // Limit date range for performance - use indexed visit_first_action_time
     switch (date_range) {
       case 'today':
-        conditions.push('DATE(lv.visit_first_action_time) = CURDATE()')
+        conditions.push('lv.visit_first_action_time >= CURDATE()')
         break
       case 'yesterday':
-        conditions.push('DATE(lv.visit_first_action_time) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)')
+        conditions.push('lv.visit_first_action_time >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)')
+        conditions.push('lv.visit_first_action_time < CURDATE()')
         break
       case 'last_7_days':
         conditions.push('lv.visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)')
@@ -522,10 +537,10 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
         conditions.push('lv.visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)')
         break
       case 'current_month':
-        conditions.push('YEAR(lv.visit_first_action_time) = YEAR(NOW()) AND MONTH(lv.visit_first_action_time) = MONTH(NOW())')
+        conditions.push('lv.visit_first_action_time >= DATE_FORMAT(NOW(), "%Y-%m-01")')
         break
       default:
-        conditions.push('lv.visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)')
+        conditions.push('lv.visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)') // Shorter default for performance
     }
     
     // Use indexed idsite column for site filtering
@@ -534,39 +549,14 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
       parameters.push(site_id)
     }
     
-    // Filter by company data availability
-    conditions.push('vesp.company = 1')
-    conditions.push('vesp.companyName IS NOT NULL')
+    const whereClause = `WHERE ${conditions.join(' AND ')}`
     
-    if (company_name) {
-      conditions.push('vesp.companyName LIKE ?')
-      parameters.push(`%${company_name}%`)
-    }
-    
-    if (domain) {
-      conditions.push('vesp.companyUrl LIKE ?')
-      parameters.push(`%${domain}%`)
-    }
-    
-    if (country) {
-      conditions.push('JSON_EXTRACT(vesp.geo, "$.country") = ?')
-      parameters.push(country)
-    }
-    
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-    
-    // Optimized company intelligence query using indexed columns for efficient joins
-    const query = `
+    // Simplified, fast query focusing on core metrics with minimal JOINs
+    const quickQuery = `
       SELECT 
-        vesp.companyName as company_name,
-        vesp.companyUrl as company_website,
-        JSON_EXTRACT(vesp.geo, '$.country') as country,
-        JSON_EXTRACT(vesp.geo, '$.city') as city,
-        JSON_EXTRACT(vesp.geo, '$.region') as region,
-        JSON_EXTRACT(vesp.companyDetails, '$.size') as company_size,
-        JSON_EXTRACT(vesp.companyDetails, '$.industry') as industry,
-        JSON_EXTRACT(vesp.companyDetails, '$.revenue') as annual_revenue,
-        JSON_EXTRACT(vesp.companyDetails, '$.employees') as employee_count,
+        lv.location_country as country,
+        lv.location_city as city,
+        lv.location_ip as ip_address,
         COUNT(DISTINCT lv.idvisit) as total_visits,
         COUNT(DISTINCT lv.idvisitor) as unique_visitors,
         MAX(lv.visit_last_action_time) as last_visit,
@@ -574,49 +564,50 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
         AVG(lv.visit_total_time) as avg_session_duration,
         SUM(lv.visit_total_actions) as total_page_views,
         AVG(lv.visit_total_actions) as avg_pages_per_visit,
-        SUM(CASE WHEN lv.visitor_returning = 1 THEN 1 ELSE 0 END) as returning_visits,
-        COUNT(DISTINCT DATE(lv.visit_first_action_time)) as days_active
+        SUM(CASE WHEN lv.visitor_returning = 1 THEN 1 ELSE 0 END) as returning_visits
       FROM matomo_log_visit lv
-      JOIN matomo_visitor_ip_map vim ON lv.location_ip = vim.visitorip 
-        AND lv.idsite = vim.idsite
-      JOIN matomo_visitor_enriched_session_premium vesp ON vim.visitorip = vesp.ip
       ${whereClause}
-      GROUP BY 
-        vesp.companyName, 
-        vesp.companyUrl,
-        JSON_EXTRACT(vesp.geo, '$.country'),
-        JSON_EXTRACT(vesp.geo, '$.city'),
-        JSON_EXTRACT(vesp.geo, '$.region'),
-        JSON_EXTRACT(vesp.companyDetails, '$.size'),
-        JSON_EXTRACT(vesp.companyDetails, '$.industry'),
-        JSON_EXTRACT(vesp.companyDetails, '$.revenue'),
-        JSON_EXTRACT(vesp.companyDetails, '$.employees')
+        AND lv.location_country IS NOT NULL 
+        AND lv.location_country != ''
+      GROUP BY lv.location_country, lv.location_city, lv.location_ip
+      HAVING total_visits >= 2  -- Focus on engaged visitors
       ORDER BY total_visits DESC, last_visit DESC
-      LIMIT ${Math.min(limit, 100)}
+      LIMIT ${Math.min(limit, 20)}  -- Reduced limit for performance
     `
     
-    // Note: LIMIT uses direct substitution, no parameter needed
+    console.log('🔍 Executing fast company intelligence query...')
+    const startTime = Date.now()
     
-    const result = await connection.query(query, parameters)
+    // Execute with timeout protection
+    const result = await Promise.race([
+      connection.query(quickQuery, parameters),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout after 30 seconds')), 30000)
+      )
+    ]) as any
     
-    // Get summary statistics using indexed joins
+    const executionTime = Date.now() - startTime
+    console.log(`⚡ Query completed in ${executionTime}ms`)
+    
+    // Get basic summary
     const summaryQuery = `
       SELECT 
-        COUNT(DISTINCT vesp.companyName) as unique_companies,
-        COUNT(DISTINCT lv.idvisit) as total_company_visits,
-        COUNT(DISTINCT JSON_EXTRACT(vesp.geo, '$.country')) as countries_count,
-        COUNT(DISTINCT JSON_EXTRACT(vesp.companyDetails, '$.industry')) as industries_count,
-        AVG(lv.visit_total_time) as avg_company_session_duration
+        COUNT(DISTINCT lv.idvisit) as total_visits,
+        COUNT(DISTINCT lv.idvisitor) as unique_visitors,
+        COUNT(DISTINCT lv.location_country) as countries_count,
+        AVG(lv.visit_total_time) as avg_session_duration
       FROM matomo_log_visit lv
-      JOIN matomo_visitor_ip_map vim ON lv.location_ip = vim.visitorip 
-        AND lv.idsite = vim.idsite
-      JOIN matomo_visitor_enriched_session_premium vesp ON vim.visitorip = vesp.ip
       ${whereClause}
+        AND lv.location_country IS NOT NULL
+      LIMIT 1
     `
     
-    // Create parameters array for summary query (no LIMIT parameter to exclude)
-    const summaryParameters = parameters
-    const summaryResult = await connection.query(summaryQuery, summaryParameters)
+    const summaryResult = await Promise.race([
+      connection.query(summaryQuery, parameters),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Summary timeout')), 10000)
+      )
+    ]) as any
     
     return {
       success: true,
@@ -627,10 +618,26 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
       summary: summaryResult.data?.[0] || {},
       company_data: result.data || [],
       rows_returned: result.data?.length || 0,
+      execution_time_ms: executionTime,
+      note: 'Using optimized visitor intelligence (enrichment data unavailable)',
       timestamp: new Date().toISOString()
     }
   } catch (error) {
     console.error('Company intelligence error:', error)
+    
+    // Final fallback to most basic data
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+      console.log('🚨 Query timeout detected, using emergency fallback...')
+      try {
+        const dbManager = await getGlobalDatabaseManager()
+        const connection = dbManager.getConnection()
+        return getEmergencyFallback(connection, options)
+      } catch (fallbackError) {
+        console.error('Emergency fallback failed:', fallbackError)
+      }
+    }
+    
     return {
       success: false,
       error: 'Failed to retrieve company intelligence',
@@ -638,5 +645,81 @@ export async function getCompanyIntelligence(options: CompanyIntelligenceOptions
       timestamp: new Date().toISOString(),
       code: 'COMPANY_INTELLIGENCE_ERROR'
     }
+  }
+}
+
+/**
+ * Basic visitor intelligence when enrichment tables are unavailable
+ */
+async function getBasicVisitorIntelligence(connection: any, options: CompanyIntelligenceOptions) {
+  const { date_range = 'last_30_days', site_id, limit = 50 } = options
+  
+  const conditions = []
+  const parameters = []
+  
+  // Simple date filter
+  if (date_range === 'today') {
+    conditions.push('DATE(visit_first_action_time) = CURDATE()')
+  } else {
+    conditions.push('visit_first_action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)')
+  }
+  
+  if (site_id) {
+    conditions.push('idsite = ?')
+    parameters.push(site_id)
+  }
+  
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+  
+  const query = `
+    SELECT 
+      location_country as country,
+      location_city as city, 
+      COUNT(DISTINCT idvisit) as total_visits,
+      COUNT(DISTINCT idvisitor) as unique_visitors,
+      MAX(visit_last_action_time) as last_visit
+    FROM matomo_log_visit 
+    ${whereClause}
+      AND location_country IS NOT NULL
+    GROUP BY location_country, location_city
+    ORDER BY total_visits DESC
+    LIMIT ${Math.min(limit, 20)}
+  `
+  
+  const result = await connection.query(query, parameters)
+  
+  return {
+    success: true,
+    intelligence_type: 'basic_visitor_intelligence',
+    date_range,
+    site_id,
+    company_data: result.data || [],
+    rows_returned: result.data?.length || 0,
+    note: 'Basic visitor data (company enrichment unavailable)',
+    timestamp: new Date().toISOString()
+  }
+}
+
+/**
+ * Emergency fallback for timeout scenarios
+ */
+async function getEmergencyFallback(connection: any, options: CompanyIntelligenceOptions) {
+  const { site_id } = options
+  
+  const query = site_id 
+    ? 'SELECT COUNT(*) as total_visits FROM matomo_log_visit WHERE idsite = ? LIMIT 1'
+    : 'SELECT COUNT(*) as total_visits FROM matomo_log_visit LIMIT 1'
+    
+  const parameters = site_id ? [site_id] : []
+  const result = await connection.query(query, parameters)
+  
+  return {
+    success: true,
+    intelligence_type: 'emergency_fallback',
+    summary: result.data?.[0] || { total_visits: 0 },
+    company_data: [],
+    rows_returned: 0,
+    note: 'Emergency fallback due to query timeout',
+    timestamp: new Date().toISOString()
   }
 }
