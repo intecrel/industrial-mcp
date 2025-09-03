@@ -223,8 +223,9 @@ export async function findCapabilityPaths({
     // Build query to find skill/capability paths
     const query = `
       MATCH (s:Skill {name: $param0})
-      ${sourceEmployee ? 'MATCH (emp:Employee {name: $param1 OR id: $param1})' : 'MATCH (emp:Employee)'}
-      ${targetRole ? 'MATCH (role:Role {name: $param2 OR title: $param2})' : ''}
+      MATCH (emp:Employee)
+      ${sourceEmployee ? 'WHERE emp.name = $param1 OR emp.id = $param1' : ''}
+      ${targetRole ? 'MATCH (role:Role) WHERE role.name = $param2 OR role.title = $param2' : ''}
       
       // Find employees with the skill
       OPTIONAL MATCH (emp)-[:HAS_SKILL]->(s)
