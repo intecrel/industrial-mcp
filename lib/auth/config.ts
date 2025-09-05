@@ -24,6 +24,14 @@ const getBaseUrl = () => {
   return process.env.AUTH0_BASE_URL || 'http://localhost:3000';
 };
 
+// Normalize Auth0 issuer URL (add https:// if missing)
+const normalizeIssuerUrl = (url: string): string => {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return `https://${url}`;
+  }
+  return url;
+};
+
 // Validate Auth0 configuration
 const validateAuth0Config = () => {
   const requiredVars = ['AUTH0_CLIENT_ID', 'AUTH0_CLIENT_SECRET', 'AUTH0_ISSUER_BASE_URL', 'NEXTAUTH_SECRET'];
@@ -35,23 +43,26 @@ const validateAuth0Config = () => {
   }
   
   // Validate URL formats
-  const issuerUrl = process.env.AUTH0_ISSUER_BASE_URL!;
+  const rawIssuerUrl = process.env.AUTH0_ISSUER_BASE_URL!;
+  const normalizedIssuerUrl = normalizeIssuerUrl(rawIssuerUrl);
   const nextAuthUrl = process.env.NEXTAUTH_URL;
   const computedBaseUrl = getBaseUrl();
   
   console.log('🔍 Validating Auth0 URLs:', {
-    issuerUrl,
+    rawIssuerUrl,
+    normalizedIssuerUrl,
     nextAuthUrl,
     computedBaseUrl,
     hasNextAuthUrl: !!nextAuthUrl,
     vercelUrl: process.env.VERCEL_URL
   });
   
-  // Check if issuer URL is valid
+  // Check if issuer URL is valid after normalization
   try {
-    new URL(issuerUrl);
+    new URL(normalizedIssuerUrl);
+    console.log('✅ Auth0 issuer URL validated:', normalizedIssuerUrl);
   } catch (error) {
-    console.error('🚨 Invalid AUTH0_ISSUER_BASE_URL:', issuerUrl, error);
+    console.error('🚨 Invalid AUTH0_ISSUER_BASE_URL:', normalizedIssuerUrl, error);
     return false;
   }
   
@@ -74,7 +85,7 @@ export const authOptions: NextAuthOptions = {
     Auth0Provider({
       clientId: process.env.AUTH0_CLIENT_ID!,
       clientSecret: process.env.AUTH0_CLIENT_SECRET!,
-      issuer: process.env.AUTH0_ISSUER_BASE_URL!,
+      issuer: normalizeIssuerUrl(process.env.AUTH0_ISSUER_BASE_URL!),
       authorization: {
         params: {
           scope: 'openid email profile',

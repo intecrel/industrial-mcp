@@ -20,7 +20,12 @@ export async function GET() {
           client_id: !!process.env.AUTH0_CLIENT_ID,
           client_secret: !!process.env.AUTH0_CLIENT_SECRET,
           issuer_base_url: !!process.env.AUTH0_ISSUER_BASE_URL,
-          issuer_base_url_value: process.env.AUTH0_ISSUER_BASE_URL,
+          issuer_base_url_raw: process.env.AUTH0_ISSUER_BASE_URL,
+          issuer_base_url_normalized: process.env.AUTH0_ISSUER_BASE_URL ? 
+            (process.env.AUTH0_ISSUER_BASE_URL.startsWith('http') ? 
+              process.env.AUTH0_ISSUER_BASE_URL : 
+              `https://${process.env.AUTH0_ISSUER_BASE_URL}`
+            ) : null,
           nextauth_secret: !!process.env.NEXTAUTH_SECRET,
           nextauth_url: !!process.env.NEXTAUTH_URL,
           nextauth_url_value: process.env.NEXTAUTH_URL,
