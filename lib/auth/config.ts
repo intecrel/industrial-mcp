@@ -89,7 +89,9 @@ export const authOptions: NextAuthOptions = {
       authorization: {
         params: {
           scope: 'openid email profile',
-          audience: process.env.AUTH0_AUDIENCE || 'https://industrial-mcp-dev.auth0.com/api/v2/',
+          // Remove audience for basic user authentication - Auth0 will use default behavior
+          // Add audience only if AUTH0_AUDIENCE environment variable is explicitly set
+          ...(process.env.AUTH0_AUDIENCE ? { audience: process.env.AUTH0_AUDIENCE } : {}),
         },
       },
     }),
