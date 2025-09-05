@@ -5,11 +5,13 @@
 
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { useSession, signIn } from 'next-auth/react'
 
 function ConsentForm() {
   const searchParams = useSearchParams()
+  const { data: session, status } = useSession()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
@@ -31,6 +33,30 @@ function ConsentForm() {
       default: return s
     }
   })
+
+  // Handle authentication requirement
+  const handleAuthRequired = async () => {
+    // Store current URL with OAuth parameters for redirect after login
+    const currentUrl = window.location.href
+    sessionStorage.setItem('oauth_redirect_after_login', currentUrl)
+    
+    // Redirect to Auth0 signin
+    await signIn('auth0', { 
+      callbackUrl: currentUrl,
+      redirect: true
+    })
+  }
+
+  // Check for post-login redirect
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      const storedUrl = sessionStorage.getItem('oauth_redirect_after_login')
+      if (storedUrl && storedUrl !== window.location.href) {
+        sessionStorage.removeItem('oauth_redirect_after_login')
+        // We're already at the right URL, just continue with the flow
+      }
+    }
+  }, [status, session])
 
   const handleConsent = async (approved: boolean) => {
     setLoading(true)
@@ -86,6 +112,59 @@ function ConsentForm() {
     )
   }
 
+  // Loading state while checking authentication
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Checking authentication...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Authentication required state
+  if (status === 'unauthenticated' || !session) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
+          <div className="text-center mb-6">
+            <div className="text-4xl mb-4">🔐</div>
+            <h1 className="text-2xl font-semibold text-gray-900 mb-2">
+              Authentication Required
+            </h1>
+            <p className="text-gray-600 mb-4">
+              You must sign in to authorize <strong>{clientName}</strong> to access your Industrial MCP Server.
+            </p>
+          </div>
+
+          <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+            <h3 className="font-medium text-blue-900 mb-2">Why do I need to sign in?</h3>
+            <p className="text-sm text-blue-800">
+              For security, we need to verify your identity before granting access to your database tools and analytics.
+            </p>
+          </div>
+
+          <button
+            onClick={handleAuthRequired}
+            className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            Sign In to Continue
+          </button>
+
+          <div className="mt-4 text-center">
+            <p className="text-xs text-gray-500">
+              You'll be redirected back here after signing in.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
@@ -94,9 +173,14 @@ function ConsentForm() {
           <h1 className="text-2xl font-semibold text-gray-900 mb-2">
             Authorize Access
           </h1>
-          <p className="text-gray-600">
+          <p className="text-gray-600 mb-2">
             <strong>{clientName}</strong> wants to access your Industrial MCP Server
           </p>
+          {session?.user && (
+            <p className="text-sm text-gray-500">
+              Signed in as: <strong>{session.user.email}</strong>
+            </p>
+          )}
         </div>
 
         <div className="mb-6">
