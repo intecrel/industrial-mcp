@@ -20,9 +20,18 @@ export async function GET() {
           client_id: !!process.env.AUTH0_CLIENT_ID,
           client_secret: !!process.env.AUTH0_CLIENT_SECRET,
           issuer_base_url: !!process.env.AUTH0_ISSUER_BASE_URL,
+          issuer_base_url_value: process.env.AUTH0_ISSUER_BASE_URL,
           nextauth_secret: !!process.env.NEXTAUTH_SECRET,
           nextauth_url: !!process.env.NEXTAUTH_URL,
+          nextauth_url_value: process.env.NEXTAUTH_URL,
+          auth0_base_url: !!process.env.AUTH0_BASE_URL,
+          auth0_base_url_value: process.env.AUTH0_BASE_URL,
           enable_auth0_flag: process.env.ENABLE_AUTH0,
+        },
+        urls: {
+          vercel_url: process.env.VERCEL_URL,
+          node_env: process.env.NODE_ENV,
+          vercel_env: process.env.VERCEL_ENV
         }
       },
       mcp: {

@@ -9,6 +9,21 @@ import { getFeatures } from '@/lib/config/feature-flags'
 
 const features = getFeatures()
 
+// Determine base URL for NextAuth
+const getBaseUrl = () => {
+  // In production/preview, use VERCEL_URL or NEXTAUTH_URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL;
+  }
+  
+  // Development fallback
+  return process.env.AUTH0_BASE_URL || 'http://localhost:3000';
+};
+
 // Validate Auth0 configuration
 const validateAuth0Config = () => {
   const requiredVars = ['AUTH0_CLIENT_ID', 'AUTH0_CLIENT_SECRET', 'AUTH0_ISSUER_BASE_URL', 'NEXTAUTH_SECRET'];
@@ -17,6 +32,37 @@ const validateAuth0Config = () => {
   if (missing.length > 0) {
     console.error('🚨 Missing Auth0 configuration:', missing);
     return false;
+  }
+  
+  // Validate URL formats
+  const issuerUrl = process.env.AUTH0_ISSUER_BASE_URL!;
+  const nextAuthUrl = process.env.NEXTAUTH_URL;
+  const computedBaseUrl = getBaseUrl();
+  
+  console.log('🔍 Validating Auth0 URLs:', {
+    issuerUrl,
+    nextAuthUrl,
+    computedBaseUrl,
+    hasNextAuthUrl: !!nextAuthUrl,
+    vercelUrl: process.env.VERCEL_URL
+  });
+  
+  // Check if issuer URL is valid
+  try {
+    new URL(issuerUrl);
+  } catch (error) {
+    console.error('🚨 Invalid AUTH0_ISSUER_BASE_URL:', issuerUrl, error);
+    return false;
+  }
+  
+  // Check if NEXTAUTH_URL is valid when provided
+  if (nextAuthUrl) {
+    try {
+      new URL(nextAuthUrl);
+    } catch (error) {
+      console.error('🚨 Invalid NEXTAUTH_URL:', nextAuthUrl, error);
+      return false;
+    }
   }
   
   console.log('✅ Auth0 configuration validated');
