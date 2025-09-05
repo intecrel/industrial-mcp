@@ -44,11 +44,17 @@ function SignInContent() {
       })
 
       if (result?.error) {
-        setError(result.error)
+        console.error('NextAuth error:', result.error);
+        if (result.error === 'OAuthSignin') {
+          setError('OAuth configuration error. Please check Auth0 settings and callback URLs.');
+        } else {
+          setError(`Sign in error: ${result.error}`);
+        }
       } else if (result?.url) {
         window.location.href = result.url
       }
     } catch (err) {
+      console.error('Sign in error:', err);
       setError('Failed to sign in. Please try again.')
     } finally {
       setLoading(false)

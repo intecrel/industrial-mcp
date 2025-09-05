@@ -15,6 +15,16 @@ export async function GET() {
         auth0_enabled: isFeatureEnabled('AUTH0'),
         landing_page: isFeatureEnabled('LANDING_PAGE')
       },
+      debug: {
+        auth0_env_vars: {
+          client_id: !!process.env.AUTH0_CLIENT_ID,
+          client_secret: !!process.env.AUTH0_CLIENT_SECRET,
+          issuer_base_url: !!process.env.AUTH0_ISSUER_BASE_URL,
+          nextauth_secret: !!process.env.NEXTAUTH_SECRET,
+          nextauth_url: !!process.env.NEXTAUTH_URL,
+          enable_auth0_flag: process.env.ENABLE_AUTH0,
+        }
+      },
       mcp: {
         tools_available: 18,
         transports: ['mcp', 'sse', 'stdio'],

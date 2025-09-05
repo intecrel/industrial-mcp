@@ -9,8 +9,22 @@ import { getFeatures } from '@/lib/config/feature-flags'
 
 const features = getFeatures()
 
+// Validate Auth0 configuration
+const validateAuth0Config = () => {
+  const requiredVars = ['AUTH0_CLIENT_ID', 'AUTH0_CLIENT_SECRET', 'AUTH0_ISSUER_BASE_URL', 'NEXTAUTH_SECRET'];
+  const missing = requiredVars.filter(env => !process.env[env]);
+  
+  if (missing.length > 0) {
+    console.error('🚨 Missing Auth0 configuration:', missing);
+    return false;
+  }
+  
+  console.log('✅ Auth0 configuration validated');
+  return true;
+};
+
 export const authOptions: NextAuthOptions = {
-  providers: [
+  providers: features.AUTH0 && validateAuth0Config() ? [
     Auth0Provider({
       clientId: process.env.AUTH0_CLIENT_ID!,
       clientSecret: process.env.AUTH0_CLIENT_SECRET!,
@@ -22,7 +36,7 @@ export const authOptions: NextAuthOptions = {
         },
       },
     }),
-  ],
+  ] : [],
   callbacks: {
     async jwt({ token, account, profile, user }) {
       // Persist Auth0 information to token
@@ -48,6 +62,17 @@ export const authOptions: NextAuthOptions = {
         console.log('🔒 Auth0 disabled via feature flag, blocking sign in')
         return false
       }
+      
+      // Debug Auth0 configuration
+      console.log('🔍 Auth0 Debug Info:', {
+        hasClientId: !!process.env.AUTH0_CLIENT_ID,
+        hasClientSecret: !!process.env.AUTH0_CLIENT_SECRET,
+        hasIssuer: !!process.env.AUTH0_ISSUER_BASE_URL,
+        hasSecret: !!process.env.NEXTAUTH_SECRET,
+        userEmail: user?.email,
+        accountProvider: account?.provider,
+        profileSub: profile?.sub
+      });
       
       console.log('✅ Auth0 sign in allowed:', user.email)
       return true
