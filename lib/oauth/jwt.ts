@@ -84,7 +84,8 @@ export const generateAuthorizationCode = async (
   scopes: string[],
   redirectUri: string,
   codeChallenge?: string,
-  codeChallengeMethod?: string
+  codeChallengeMethod?: string,
+  user?: any // Authenticated user info
 ): Promise<string> => {
   const config = getOAuthConfig();
   const now = Math.floor(Date.now() / 1000);
@@ -101,6 +102,10 @@ export const generateAuthorizationCode = async (
     redirect_uri: redirectUri,
     code_challenge: codeChallenge,
     code_challenge_method: codeChallengeMethod,
+    // Include authenticated user info in the authorization code
+    user_id: user?.id || user?.email || user?.sub,
+    user_email: user?.email,
+    auth_time: now, // When user authenticated
   };
 
   const secret = getJwtSecret();

@@ -4,6 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../../lib/auth/config';
 import { validateClient, validateRedirectUri } from '../../../../lib/oauth/clients';
 import { validateScopes } from '../../../../lib/oauth/scopes';
 import { generateAuthorizationCode } from '../../../../lib/oauth/jwt';
@@ -11,6 +13,19 @@ import { isValidCodeChallenge } from '../../../../lib/oauth/pkce';
 
 export async function POST(request: NextRequest) {
   try {
+    // CRITICAL: Verify user is authenticated before processing consent
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user) {
+      console.error('🚨 SECURITY: Unauthenticated consent attempt blocked');
+      return NextResponse.json({
+        error: 'unauthorized',
+        error_description: 'Authentication required to process consent'
+      }, { status: 401 });
+    }
+    
+    console.log(`🔐 Processing consent for authenticated user: ${session.user.email}`);
+    
     const body = await request.json();
     
     const {
@@ -126,13 +141,14 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      // Generate authorization code
+      // Generate authorization code with authenticated user context
       const authCode = await generateAuthorizationCode(
         client_id,
         scopeValidation.scopes,
         redirect_uri,
         code_challenge || undefined,
-        code_challenge_method || undefined
+        code_challenge_method || undefined,
+        session.user // Include authenticated user info
       );
 
       // Construct redirect URL with authorization code
