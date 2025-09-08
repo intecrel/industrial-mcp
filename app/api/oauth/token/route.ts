@@ -129,8 +129,12 @@ export async function POST(request: NextRequest) {
     }
     
     try {
-      // Generate access token using the authenticated client's ID
-      const tokenResponse = await generateAccessToken(client.client_id, scopeValidation.scopes);
+      // Generate access token using the authenticated client's ID and user email from auth code
+      const tokenResponse = await generateAccessToken(
+        client.client_id, 
+        scopeValidation.scopes,
+        authClaims.user_email
+      );
       
       console.log(`✅ Access token issued for client: ${client.client_name} with scopes: ${scopeValidation.scopes.join(' ')}`);
       

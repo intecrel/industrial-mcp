@@ -10,14 +10,22 @@ import { validateClient, validateRedirectUri } from '../../../../lib/oauth/clien
 import { validateScopes } from '../../../../lib/oauth/scopes';
 import { generateAuthorizationCode } from '../../../../lib/oauth/jwt';
 import { isValidCodeChallenge } from '../../../../lib/oauth/pkce';
+import { validateCSRFToken } from '../../../../lib/security/csrf';
+import { withRateLimit, RATE_LIMITS, markSuccessfulRequest } from '../../../../lib/security/rate-limiter';
+import { createAuditLogger, logOAuthConsent, logSecurityViolation, AuditEventType } from '../../../../lib/security/audit-logger';
+import { addConsentGrant } from '../../../../lib/oauth/consent-grants-api';
 
-export async function POST(request: NextRequest) {
+async function consentHandler(request: NextRequest): Promise<Response> {
   try {
     // CRITICAL: Verify user is authenticated before processing consent
     const session = await getServerSession(authOptions);
     
     if (!session || !session.user) {
       console.error('🚨 SECURITY: Unauthenticated consent attempt blocked');
+      logSecurityViolation(request, 'Unauthenticated consent attempt', {
+        endpoint: '/api/auth/consent',
+        method: 'POST'
+      });
       return NextResponse.json({
         error: 'unauthorized',
         error_description: 'Authentication required to process consent'
@@ -35,8 +43,42 @@ export async function POST(request: NextRequest) {
       state,
       code_challenge,
       code_challenge_method = 'S256',
-      approved
+      approved,
+      _csrf_token,
+      _csrf_expires
     } = body;
+
+    // Validate CSRF token
+    const csrfHeader = request.headers.get('x-csrf-token');
+    
+    if (!csrfHeader || !_csrf_token || !_csrf_expires) {
+      console.error('🚨 SECURITY: CSRF validation failed - missing tokens');
+      logSecurityViolation(request, 'CSRF tokens missing', {
+        endpoint: '/api/auth/consent',
+        user_email: session.user.email
+      }, session.user);
+      return NextResponse.json({
+        error: 'csrf_required',
+        error_description: 'CSRF protection required'
+      }, { status: 403 });
+    }
+    
+    const csrfValidation = validateCSRFToken(csrfHeader, _csrf_token, _csrf_expires);
+    
+    if (!csrfValidation.valid) {
+      console.error('🚨 SECURITY: CSRF validation failed:', csrfValidation.error);
+      logSecurityViolation(request, 'CSRF validation failed', {
+        endpoint: '/api/auth/consent',
+        error: csrfValidation.error,
+        user_email: session.user.email
+      }, session.user);
+      return NextResponse.json({
+        error: 'csrf_invalid',
+        error_description: csrfValidation.error || 'Invalid CSRF token'
+      }, { status: 403 });
+    }
+    
+    console.log('🛡️ CSRF token validated successfully');
 
     // Validate required parameters
     if (!client_id) {
@@ -99,24 +141,35 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Handle denial
-    if (!approved) {
-      console.log(`❌ User denied authorization for client: ${client.client_name}`);
-      return createConsentErrorRedirect(
-        redirect_uri,
-        'access_denied',
-        'User denied the authorization request',
-        state
-      );
-    }
-
-    // Validate scopes
+    // Validate scopes first (needed for both approval and denial logging)
     const scopeValidation = validateScopes(scope);
     if (!scopeValidation.valid) {
       return createConsentErrorRedirect(
         redirect_uri,
         'invalid_scope',
         scopeValidation.errors.join(', '),
+        state
+      );
+    }
+
+    // Handle denial
+    if (!approved) {
+      console.log(`❌ User denied authorization for client: ${client.client_name}`);
+      
+      // Log consent denial
+      logOAuthConsent(
+        request,
+        session.user,
+        client_id,
+        false,
+        scopeValidation.scopes,
+        session.user.id || session.user.email || 'unknown'
+      );
+      
+      return createConsentErrorRedirect(
+        redirect_uri,
+        'access_denied',
+        'User denied the authorization request',
         state
       );
     }
@@ -158,8 +211,46 @@ export async function POST(request: NextRequest) {
         redirectUrl.searchParams.set('state', state);
       }
 
+      // Add consent grant record for user management
+      const grantId = await addConsentGrant(
+        session.user.email!,
+        client_id,
+        client.client_name,
+        scopeValidation.scopes,
+        session.user.id
+      );
+      
       console.log(`✅ User approved authorization for client: ${client.client_name}`);
+      console.log(`📝 Consent grant recorded: ${grantId}`);
       console.log(`🔑 Authorization code issued: ${authCode.substring(0, 8)}...`);
+
+      // Log successful consent and token issuance
+      logOAuthConsent(
+        request,
+        session.user,
+        client_id,
+        true,
+        scopeValidation.scopes,
+        session.user.id || session.user.email || 'unknown'
+      );
+      
+      const logger = createAuditLogger(request, session.user, session.user.id || session.user.email || undefined);
+      logger.logOAuthEvent(
+        AuditEventType.OAUTH_TOKEN_ISSUED,
+        `Authorization code issued for client ${client.client_name}`,
+        client_id,
+        'success',
+        {
+          scopes: scopeValidation.scopes,
+          code_challenge_method,
+          redirect_uri,
+          auth_code_preview: authCode.substring(0, 8) + '...'
+        },
+        'medium'
+      );
+
+      // Mark as successful request for rate limiting
+      markSuccessfulRequest(request);
 
       return NextResponse.json({
         redirect_url: redirectUrl.toString()
@@ -204,3 +295,6 @@ function createConsentErrorRedirect(
     redirect_url: url.toString()
   });
 }
+
+// Export rate-limited handler
+export const POST = withRateLimit(RATE_LIMITS.OAUTH_CONSENT, consentHandler);

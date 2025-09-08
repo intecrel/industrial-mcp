@@ -14,6 +14,8 @@ function ConsentForm() {
   const { data: session, status } = useSession()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [csrfToken, setCsrfToken] = useState<string>('')
+  const [csrfData, setCsrfData] = useState<any>(null)
   
   // Extract OAuth parameters from URL
   const clientId = searchParams.get('client_id')
@@ -58,15 +60,40 @@ function ConsentForm() {
     }
   }, [status, session])
 
+  // Fetch CSRF token when user is authenticated
+  useEffect(() => {
+    if (status === 'authenticated' && session && !csrfToken) {
+      fetch('/api/csrf')
+        .then(res => res.json())
+        .then(data => {
+          if (data.csrf_token) {
+            setCsrfToken(data.csrf_token)
+            setCsrfData(data)
+          }
+        })
+        .catch(err => {
+          console.error('Failed to fetch CSRF token:', err)
+          setError('Failed to load security token. Please refresh the page.')
+        })
+    }
+  }, [status, session, csrfToken])
+
   const handleConsent = async (approved: boolean) => {
     setLoading(true)
     setError(null)
+
+    if (!csrfToken || !csrfData) {
+      setError('Security token not available. Please refresh the page.')
+      setLoading(false)
+      return
+    }
 
     try {
       const response = await fetch('/api/auth/consent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
         },
         body: JSON.stringify({
           client_id: clientId,
@@ -75,7 +102,9 @@ function ConsentForm() {
           state,
           code_challenge: codeChallenge,
           code_challenge_method: codeChallengeMethod,
-          approved
+          approved,
+          _csrf_token: csrfData._csrf_token_hash,
+          _csrf_expires: csrfData._csrf_expires
         })
       })
 

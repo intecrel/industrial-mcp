@@ -9,11 +9,12 @@ import { validateClient, validateRedirectUri } from '../../../../lib/oauth/clien
 import { validateScopes } from '../../../../lib/oauth/scopes';
 import { isValidCodeChallenge } from '../../../../lib/oauth/pkce';
 import { getCurrentDeploymentUrl } from '../../../../lib/oauth/config';
+import { withRateLimit, RATE_LIMITS } from '../../../../lib/security/rate-limiter';
 
 // Force dynamic rendering for OAuth routes
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+async function authorizeHandler(request: NextRequest): Promise<Response> {
   try {
     const { searchParams } = new URL(request.url);
     
@@ -155,3 +156,6 @@ function createRedirectError(
   
   return NextResponse.redirect(url.toString());
 }
+
+// Export rate-limited handler  
+export const GET = withRateLimit(RATE_LIMITS.OAUTH_AUTHORIZE, authorizeHandler);

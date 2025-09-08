@@ -42,7 +42,8 @@ const getJwtSecret = (): Uint8Array => {
  */
 export const generateAccessToken = async (
   clientId: string, 
-  scopes: string[]
+  scopes: string[],
+  userEmail?: string
 ): Promise<AccessTokenPayload> => {
   const config = getOAuthConfig();
   const now = Math.floor(Date.now() / 1000);
@@ -58,7 +59,8 @@ export const generateAccessToken = async (
     iat: now - clockSkewBuffer, // Issue token slightly in past for clock skew
     scope: scopes.join(' '),
     client_id: clientId,
-    token_type: 'access_token'
+    token_type: 'access_token',
+    user_email: userEmail // Include user email for consent tracking
   };
 
   const secret = getJwtSecret();
@@ -116,10 +118,27 @@ export const generateAuthorizationCode = async (
 };
 
 /**
+ * Check if token is revoked using the token blacklist
+ */
+async function isTokenRevoked(token: string): Promise<boolean> {
+  try {
+    const { isTokenRevoked: checkRevoked } = await import('./token-blacklist');
+    return checkRevoked(token);
+  } catch {
+    return false; // If revocation check fails, don't block token validation
+  }
+}
+
+/**
  * Validate and decode JWT token
  */
 export const validateToken = async (token: string): Promise<TokenClaims> => {
   try {
+    // Check if token is revoked first
+    if (await isTokenRevoked(token)) {
+      throw new Error('Token has been revoked');
+    }
+    
     const config = getOAuthConfig();
     const secret = getJwtSecret();
     
@@ -163,6 +182,16 @@ export const validateAccessToken = async (authorizationHeader: string | null): P
   const now = Math.floor(Date.now() / 1000);
   if (claims.exp < now) {
     throw new Error('Token expired');
+  }
+  
+  // Update last used timestamp for consent grant tracking
+  try {
+    const { updateLastUsed } = await import('./consent-grants-api');
+    if (claims.user_email && claims.client_id) {
+      await updateLastUsed(claims.user_email, claims.client_id);
+    }
+  } catch {
+    // Continue if consent grant update fails
   }
   
   return claims;
