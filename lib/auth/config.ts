@@ -96,6 +96,13 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ] : [],
+  // Configure proper Auth0 logout
+  events: {
+    signOut: async () => {
+      // This will be called when NextAuth signs out
+      console.log('🚪 NextAuth signout event triggered')
+    }
+  },
   callbacks: {
     async jwt({ token, account, profile, user }) {
       // Persist Auth0 information to token
