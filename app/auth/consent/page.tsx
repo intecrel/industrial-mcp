@@ -42,10 +42,13 @@ function ConsentForm() {
     const currentUrl = window.location.href
     sessionStorage.setItem('oauth_redirect_after_login', currentUrl)
     
-    // Redirect to Auth0 signin
+    // Redirect to Auth0 signin with fresh login prompt
+    // This forces Auth0 to show login screen even if user has existing session
     await signIn('auth0', { 
       callbackUrl: currentUrl,
       redirect: true
+    }, {
+      prompt: 'login'
     })
   }
 

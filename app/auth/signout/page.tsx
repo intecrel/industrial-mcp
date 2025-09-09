@@ -5,10 +5,10 @@
 
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
-export default function SignOutPage() {
+function SignOutContent() {
   const searchParams = useSearchParams()
   
   useEffect(() => {
@@ -61,5 +61,25 @@ export default function SignOutPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function SignOutPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <h1 className="text-2xl font-semibold text-gray-900 mb-2">Signing Out</h1>
+            <p className="text-gray-600">
+              Clearing all sessions... You will be redirected shortly.
+            </p>
+          </div>
+        </div>
+      </div>
+    }>
+      <SignOutContent />
+    </Suspense>
   )
 }
