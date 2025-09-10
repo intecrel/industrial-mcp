@@ -7,7 +7,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useSession, signIn } from 'next-auth/react'
+import { useSession, signIn, signOut } from 'next-auth/react'
 
 function ConsentForm() {
   const searchParams = useSearchParams()
@@ -41,6 +41,15 @@ function ConsentForm() {
     // Store current URL with OAuth parameters for redirect after login
     const currentUrl = window.location.href
     sessionStorage.setItem('oauth_redirect_after_login', currentUrl)
+    
+    // Clear any existing NextAuth session to force fresh login
+    // This ensures MCP reconnections always show Auth0 login screen
+    if (session) {
+      console.log('🔄 Clearing existing NextAuth session for fresh MCP login')
+      await signOut({ redirect: false })
+      // Small delay to ensure session is cleared before redirecting
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
     
     // Redirect to Auth0 signin with fresh login prompt
     // This forces Auth0 to show login screen even if user has existing session
