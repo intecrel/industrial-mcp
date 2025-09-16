@@ -301,49 +301,39 @@ export async function correlateOperationalRelationships(options: OperationalCorr
           const companyQuery = entity_name
             ? `
               MATCH (c:Company)
-              OPTIONAL MATCH (c)-[:HAS_LOCATION]->(l:Location)
-              OPTIONAL MATCH (c)-[:OPERATES]->(m:Machine)
-              OPTIONAL MATCH (c)-[:RUNS]->(p:Process)
-              OPTIONAL MATCH (c)-[:PROVIDES]->(s:Service)
-              OPTIONAL MATCH (c)-[:EMPLOYS]->(e:Employee)
               WHERE c.name CONTAINS $param0
-              RETURN 
+              WITH c LIMIT $param1
+              RETURN
                 c.name as company_name,
                 c.website as company_website,
                 c.industry as industry,
                 c.location as headquarters_location,
-                count(DISTINCT l) as locations,
-                count(DISTINCT m) as machines,
-                count(DISTINCT p) as processes,
-                count(DISTINCT s) as services,
-                count(DISTINCT e) as employees
+                COUNT { (c)-[:HAS_LOCATION]->() } as locations,
+                COUNT { (c)-[:OPERATES]->() } as machines,
+                COUNT { (c)-[:RUNS]->() } as processes,
+                COUNT { (c)-[:PROVIDES]->() } as services,
+                COUNT { (c)-[:EMPLOYS]->() } as employees
               ORDER BY c.name
-              LIMIT $param1
             `
             : `
               MATCH (c:Company)
-              OPTIONAL MATCH (c)-[:HAS_LOCATION]->(l:Location)
-              OPTIONAL MATCH (c)-[:OPERATES]->(m:Machine)
-              OPTIONAL MATCH (c)-[:RUNS]->(p:Process)
-              OPTIONAL MATCH (c)-[:PROVIDES]->(s:Service)
-              OPTIONAL MATCH (c)-[:EMPLOYS]->(e:Employee)
-              RETURN 
+              WITH c LIMIT $param0
+              RETURN
                 c.name as company_name,
                 c.website as company_website,
                 c.industry as industry,
                 c.location as headquarters_location,
-                count(DISTINCT l) as locations,
-                count(DISTINCT m) as machines,
-                count(DISTINCT p) as processes,
-                count(DISTINCT s) as services,
-                count(DISTINCT e) as employees
+                COUNT { (c)-[:HAS_LOCATION]->() } as locations,
+                COUNT { (c)-[:OPERATES]->() } as machines,
+                COUNT { (c)-[:RUNS]->() } as processes,
+                COUNT { (c)-[:PROVIDES]->() } as services,
+                COUNT { (c)-[:EMPLOYS]->() } as employees
               ORDER BY c.name
-              LIMIT $param0
             `
           
-          const companyParams = entity_name 
-            ? [entity_name, neo4j.int(Math.min(safeLimit, 50))]
-            : [neo4j.int(Math.min(safeLimit, 50))]
+          const companyParams = entity_name
+            ? [entity_name, neo4j.int(Math.min(safeLimit, 10))]
+            : [neo4j.int(Math.min(safeLimit, 10))]
 
           // DEBUG: Print exact Neo4j query and parameters before execution
           console.log('🔍 DEBUG correlateOperationalRelationships Neo4j QUERY:')
