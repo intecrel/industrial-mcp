@@ -1,6 +1,7 @@
 import './globals.css';
 import { Inter } from 'next/font/google';
 import type { Metadata } from 'next';
+import Providers from './providers';
 
 // Import Inter font
 const inter = Inter({
@@ -57,9 +58,11 @@ export default function RootLayout({
             `,
           }}
         />
-        <main className="relative flex min-h-screen flex-col">
-          {children}
-        </main>
+        <Providers>
+          <main className="relative flex min-h-screen flex-col">
+            {children}
+          </main>
+        </Providers>
       </body>
     </html>
   );

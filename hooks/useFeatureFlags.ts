@@ -15,10 +15,42 @@ export const useFeatureFlags = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Client-side feature flag detection
-    const flags = getFeatures();
-    setFeatures(flags);
-    setIsLoading(false);
+    // Client-side feature flag detection - fetch from API
+    const fetchFeatures = async () => {
+      try {
+        const response = await fetch('/api/health');
+        const data = await response.json();
+        
+        if (data.features) {
+          // Map API response to our FeatureFlags interface
+          const mappedFlags: FeatureFlags = {
+            AUTH0: data.features.auth0_enabled ?? false,
+            MAC_VERIFICATION: data.features.mac_verification ?? false,
+            ENHANCED_OAUTH: data.features.oauth_enabled ?? false,
+            LANDING_PAGE: data.features.landing_page ?? false,
+            USER_DASHBOARD: data.features.user_dashboard ?? false,
+            USAGE_TRACKING: data.features.usage_tracking ?? false,
+            MULTI_CLIENT: data.features.multi_client ?? false,
+            ADMIN_INTERFACE: data.features.admin_interface ?? false,
+            SYSTEM_MONITORING: data.features.system_monitoring ?? false,
+          };
+          setFeatures(mappedFlags);
+        } else {
+          // Fallback to server-side detection
+          const flags = getFeatures();
+          setFeatures(flags);
+        }
+      } catch (error) {
+        console.error('Failed to fetch feature flags:', error);
+        // Fallback to server-side detection
+        const flags = getFeatures();
+        setFeatures(flags);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchFeatures();
   }, []);
 
   // Utility function to check if a specific feature is enabled
