@@ -10,6 +10,7 @@
  */
 
 import { getGlobalDatabaseManager } from '../../../../lib/database'
+import { createDatabaseAuditLogger, AuditEventType } from '../../../../lib/security/audit-logger'
 
 // Cypher injection prevention - allowlist of safe Cypher patterns
 const SAFE_CYPHER_PATTERNS = [
@@ -23,17 +24,100 @@ const SAFE_CYPHER_PATTERNS = [
   /^(MATCH|RETURN|WHERE|ORDER BY|LIMIT|WITH|CREATE|MERGE|SET|DELETE|REMOVE)\s+/i
 ]
 
-// Dangerous Cypher keywords to block
-const DANGEROUS_KEYWORDS = [
-  'DROP', 'DELETE', 'REMOVE', 'DETACH DELETE', 'CREATE CONSTRAINT', 
+// Operation Classification System
+enum OperationType {
+  READ = 'READ',
+  CREATE = 'CREATE',
+  MERGE = 'MERGE',
+  SET = 'SET',
+  FORBIDDEN = 'FORBIDDEN'
+}
+
+enum PermissionLevel {
+  LEVEL_1_READ_ONLY = 1,        // READ operations + basic CREATE nodes
+  LEVEL_2_AUTHENTICATED = 2,    // + CREATE relationships + MERGE operations
+  LEVEL_3_ELEVATED = 3,         // + SET property operations with full audit
+  LEVEL_4_ADMIN = 4            // Reserved for future schema operations
+}
+
+// Completely forbidden operations (NO DELETE POLICY)
+const FORBIDDEN_KEYWORDS = [
+  'DROP', 'DELETE', 'REMOVE', 'DETACH DELETE', 'CREATE CONSTRAINT',
   'DROP CONSTRAINT', 'CREATE INDEX', 'DROP INDEX', 'CALL dbms',
   'CALL db.', 'LOAD CSV', 'USING PERIODIC COMMIT', 'FOREACH'
 ]
 
+// Permission-based operation allowlist
+const OPERATION_PERMISSIONS: Record<PermissionLevel, string[]> = {
+  [PermissionLevel.LEVEL_1_READ_ONLY]: [
+    'MATCH', 'RETURN', 'WITH', 'OPTIONAL MATCH', 'WHERE', 'ORDER BY', 'LIMIT', 'UNWIND',
+    'CREATE (' // Only CREATE nodes, not relationships
+  ],
+  [PermissionLevel.LEVEL_2_AUTHENTICATED]: [
+    'MATCH', 'RETURN', 'WITH', 'OPTIONAL MATCH', 'WHERE', 'ORDER BY', 'LIMIT', 'UNWIND',
+    'CREATE (', 'CREATE -', 'CREATE ]->', 'MERGE'
+  ],
+  [PermissionLevel.LEVEL_3_ELEVATED]: [
+    'MATCH', 'RETURN', 'WITH', 'OPTIONAL MATCH', 'WHERE', 'ORDER BY', 'LIMIT', 'UNWIND',
+    'CREATE (', 'CREATE -', 'CREATE ]->', 'MERGE', 'SET'
+  ],
+  [PermissionLevel.LEVEL_4_ADMIN]: [
+    // Reserved for future schema operations via separate interface
+    'MATCH', 'RETURN', 'WITH', 'OPTIONAL MATCH', 'WHERE', 'ORDER BY', 'LIMIT', 'UNWIND',
+    'CREATE (', 'CREATE -', 'CREATE ]->', 'MERGE', 'SET'
+  ]
+}
+
 /**
- * Validates and sanitizes Cypher queries to prevent injection attacks
+ * Classify the type of Cypher operation
  */
-function validateCypherQuery(query: string): { isValid: boolean; sanitized: string; error?: string } {
+function classifyOperation(query: string): OperationType {
+  const upperQuery = query.toUpperCase().trim()
+
+  // Check for forbidden operations first
+  for (const forbidden of FORBIDDEN_KEYWORDS) {
+    if (upperQuery.includes(forbidden.toUpperCase())) {
+      return OperationType.FORBIDDEN
+    }
+  }
+
+  // Classify allowed operations
+  if (upperQuery.includes('SET ')) {
+    return OperationType.SET
+  }
+  if (upperQuery.includes('MERGE ')) {
+    return OperationType.MERGE
+  }
+  if (upperQuery.includes('CREATE ')) {
+    return OperationType.CREATE
+  }
+
+  return OperationType.READ
+}
+
+/**
+ * Get current user permission level (for now, defaulting to Level 2)
+ * TODO: Implement API key-based permission detection
+ */
+function getCurrentPermissionLevel(): PermissionLevel {
+  // For Phase 1 implementation, default to Level 2 (authenticated)
+  // Later phases will implement API key-based permission levels
+  return PermissionLevel.LEVEL_2_AUTHENTICATED
+}
+
+/**
+ * Enhanced Cypher query validation with operation classification and permissions
+ */
+function validateCypherQuery(
+  query: string,
+  permissionLevel: PermissionLevel = getCurrentPermissionLevel()
+): {
+  isValid: boolean;
+  sanitized: string;
+  operationType: OperationType;
+  error?: string;
+  complexityScore?: number;
+} {
   try {
     // Remove comments and normalize whitespace
     const normalized = query
@@ -42,61 +126,162 @@ function validateCypherQuery(query: string): { isValid: boolean; sanitized: stri
       .replace(/\s+/g, ' ')
       .trim()
 
-    // Check for dangerous keywords
-    const upperQuery = normalized.toUpperCase()
-    for (const keyword of DANGEROUS_KEYWORDS) {
-      if (upperQuery.includes(keyword.toUpperCase())) {
-        return {
-          isValid: false,
-          sanitized: '',
-          error: `Dangerous operation detected: ${keyword}`
+    if (normalized.length === 0) {
+      return {
+        isValid: false,
+        sanitized: '',
+        operationType: OperationType.FORBIDDEN,
+        error: 'Query cannot be empty'
+      }
+    }
+
+    // Classify the operation
+    const operationType = classifyOperation(normalized)
+
+    // Check for forbidden operations
+    if (operationType === OperationType.FORBIDDEN) {
+      const upperQuery = normalized.toUpperCase()
+      for (const forbidden of FORBIDDEN_KEYWORDS) {
+        if (upperQuery.includes(forbidden.toUpperCase())) {
+          return {
+            isValid: false,
+            sanitized: '',
+            operationType: OperationType.FORBIDDEN,
+            error: `Forbidden operation detected: ${forbidden} operations are not allowed`
+          }
         }
       }
     }
 
-    // Ensure query starts with MATCH or RETURN (read-only operations)
-    if (!upperQuery.startsWith('MATCH') && !upperQuery.startsWith('RETURN') && !upperQuery.startsWith('WITH')) {
-      return {
-        isValid: false,
-        sanitized: '',
-        error: 'Only read-only queries (MATCH, RETURN, WITH) are allowed'
+    // Check permission-based access
+    const allowedOperations = OPERATION_PERMISSIONS[permissionLevel]
+    const upperQuery = normalized.toUpperCase()
+
+    let hasPermission = false
+
+    // Check if query contains allowed operations for this permission level
+    for (const allowedOp of allowedOperations) {
+      if (upperQuery.includes(allowedOp.toUpperCase())) {
+        hasPermission = true
+        break
       }
     }
 
-    // Basic structure validation - ensure it looks like valid Cypher
-    if (normalized.length < 5 || !normalized.includes('RETURN')) {
+    if (!hasPermission) {
       return {
         isValid: false,
         sanitized: '',
-        error: 'Query must be valid Cypher with RETURN clause'
+        operationType,
+        error: `Operation ${operationType} requires permission level ${getRequiredPermissionLevel(operationType)} or higher. Current level: ${permissionLevel}`
+      }
+    }
+
+    // Additional validation for write operations
+    if (operationType !== OperationType.READ) {
+      // Ensure write operations have proper structure
+      if (!normalized.includes('RETURN') && !normalized.includes('MERGE') && !normalized.includes('SET')) {
+        // Allow CREATE operations without RETURN
+        if (operationType !== OperationType.CREATE) {
+          return {
+            isValid: false,
+            sanitized: '',
+            operationType,
+            error: 'Write operations should include proper result handling'
+          }
+        }
+      }
+
+      // Complexity check for write operations
+      const complexity = estimateQueryComplexity(normalized)
+      if (complexity > 80) {
+        return {
+          isValid: false,
+          sanitized: '',
+          operationType,
+          error: `Query complexity too high (${complexity}/100). Maximum allowed: 80`
+        }
       }
     }
 
     return {
       isValid: true,
-      sanitized: normalized
+      sanitized: normalized,
+      operationType,
+      complexityScore: estimateQueryComplexity(normalized)
     }
   } catch (error) {
     return {
       isValid: false,
       sanitized: '',
+      operationType: OperationType.FORBIDDEN,
       error: `Query validation error: ${error instanceof Error ? error.message : 'Unknown error'}`
     }
   }
 }
 
 /**
- * Execute parameterized Cypher queries against the knowledge graph
+ * Get required permission level for operation type
  */
-export async function queryKnowledgeGraph({ 
-  query, 
-  parameters = {}, 
-  limit = 100 
-}: { 
+function getRequiredPermissionLevel(operationType: OperationType): PermissionLevel {
+  switch (operationType) {
+    case OperationType.READ:
+      return PermissionLevel.LEVEL_1_READ_ONLY
+    case OperationType.CREATE:
+      return PermissionLevel.LEVEL_2_AUTHENTICATED
+    case OperationType.MERGE:
+      return PermissionLevel.LEVEL_2_AUTHENTICATED
+    case OperationType.SET:
+      return PermissionLevel.LEVEL_3_ELEVATED
+    default:
+      return PermissionLevel.LEVEL_4_ADMIN
+  }
+}
+
+/**
+ * Estimate query complexity (simplified version for initial implementation)
+ */
+function estimateQueryComplexity(query: string): number {
+  let complexity = 0
+  const upperQuery = query.toUpperCase()
+
+  // Base complexity for operations
+  if (upperQuery.includes('MATCH')) complexity += 10
+  if (upperQuery.includes('CREATE')) complexity += 20
+  if (upperQuery.includes('MERGE')) complexity += 30
+  if (upperQuery.includes('SET')) complexity += 15
+
+  // Relationship complexity
+  const relationshipCount = (query.match(/--\>|<--|--/g) || []).length
+  complexity += relationshipCount * 5
+
+  // Query length factor
+  complexity += Math.floor(query.length / 100) * 5
+
+  // Optional operations add complexity
+  if (upperQuery.includes('OPTIONAL MATCH')) complexity += 15
+
+  // Path traversal complexity
+  const pathTraversals = (query.match(/\*[0-9]+\.\.[0-9]+/g) || []).length
+  complexity += pathTraversals * 20
+
+  return Math.min(complexity, 100)
+}
+
+/**
+ * Execute parameterized Cypher queries against the knowledge graph with comprehensive audit trails
+ */
+export async function queryKnowledgeGraph({
+  query,
+  parameters = {},
+  limit = 100
+}: {
   query: string
   parameters?: Record<string, any>
-  limit?: number 
+  limit?: number
 }) {
+  const startTime = Date.now()
+  let auditLogger: ReturnType<typeof createDatabaseAuditLogger> | null = null
+
   try {
     const dbManager = await getGlobalDatabaseManager()
     const neo4j = dbManager.getConnection('neo4j') // Get Neo4j connection by name
@@ -105,11 +290,26 @@ export async function queryKnowledgeGraph({
       await neo4j.connect()
     }
 
-    // Validate and sanitize the query
+    // Create audit logger for this operation
+    auditLogger = createDatabaseAuditLogger(
+      'neo4j',
+      undefined, // TODO: Extract user info from request context
+      undefined  // TODO: Extract client info from request context
+    )
+
+    // Enhanced validation with operation classification
     const validation = validateCypherQuery(query)
     if (!validation.isValid) {
+      // Log blocked dangerous operation
+      if (validation.operationType === OperationType.FORBIDDEN) {
+        auditLogger.logDangerousOperationBlocked(query, validation.error || 'Forbidden operation')
+      }
       throw new Error(`Query validation failed: ${validation.error}`)
     }
+
+    console.log(`🔍 Executing ${validation.operationType} operation: ${validation.sanitized.substring(0, 100)}...`)
+    console.log(`📊 Parameters:`, parameters)
+    console.log(`🎯 Complexity Score: ${validation.complexityScore}/100`)
 
     // Add LIMIT to prevent large result sets
     let finalQuery = validation.sanitized
@@ -117,31 +317,91 @@ export async function queryKnowledgeGraph({
       finalQuery += ` LIMIT ${Math.min(limit, 1000)}` // Cap at 1000 for safety
     }
 
-    console.log(`🔍 Executing Neo4j query: ${finalQuery.substring(0, 100)}...`)
-    console.log(`📊 Parameters:`, parameters)
+    // Execute query with state capture for write operations
+    const isWriteOperation = validation.operationType !== OperationType.READ
+    const result = isWriteOperation
+      ? await (neo4j as any).queryWithAuditCapture(finalQuery, parameters, true)
+      : await neo4j.query(finalQuery, parameters)
 
-    // Convert parameters to array format for the Neo4j driver
-    const paramArray = Object.values(parameters)
-    const result = await neo4j.query(finalQuery, paramArray)
+    const executionTime = Date.now() - startTime
 
     if (!result.success) {
+      // Log failed operation
+      auditLogger.logQuery(
+        finalQuery,
+        validation.operationType as any,
+        'failure',
+        executionTime,
+        0,
+        0,
+        validation.complexityScore || 0,
+        result.beforeState,
+        result.afterState,
+        parameters
+      )
       throw new Error(result.error || 'Query execution failed')
     }
 
+    // Estimate affected entities
+    const affected = (neo4j as any).estimateAffectedEntities ?
+      (neo4j as any).estimateAffectedEntities(result) : { nodes: 0, relationships: 0 }
+
+    // Log successful operation with full audit trail
+    auditLogger.logQuery(
+      finalQuery,
+      validation.operationType as any,
+      'success',
+      executionTime,
+      affected.nodes,
+      affected.relationships,
+      validation.complexityScore || 0,
+      result.beforeState,
+      result.afterState,
+      parameters
+    )
+
     return {
       success: true,
+      operation_type: validation.operationType,
       query: finalQuery,
       records: result.data,
       count: result.data?.length || 0,
       metadata: result.metadata,
+      execution_time_ms: executionTime,
+      complexity_score: validation.complexityScore,
+      affected_entities: affected,
+      audit_trail: {
+        before_state: result.beforeState,
+        after_state: result.afterState,
+        timestamp: new Date().toISOString()
+      },
       timestamp: new Date().toISOString()
     }
   } catch (error) {
+    const executionTime = Date.now() - startTime
     console.error('❌ Neo4j query error:', error)
+
+    // Log error if audit logger is available
+    if (auditLogger) {
+      auditLogger.logQuery(
+        query,
+        'READ' as any, // Default for error cases
+        'failure',
+        executionTime,
+        0,
+        0,
+        0,
+        undefined,
+        undefined,
+        parameters
+      )
+    }
+
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
       query: query,
+      execution_time_ms: executionTime,
       timestamp: new Date().toISOString()
     }
   }
@@ -279,8 +539,8 @@ export async function findCapabilityPaths({
         paths: result.records,
         summary: {
           total_paths: result.count,
-          employees_with_skill: result.records?.filter(r => r.emp && r.target_skill).length || 0,
-          capability_connections: result.records?.filter(r => r.capabilities && r.capabilities.length > 0).length || 0
+          employees_with_skill: result.records?.filter((r: any) => r.emp && r.target_skill).length || 0,
+          capability_connections: result.records?.filter((r: any) => r.capabilities && r.capabilities.length > 0).length || 0
         }
       },
       timestamp: new Date().toISOString()
