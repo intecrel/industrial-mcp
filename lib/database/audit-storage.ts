@@ -315,7 +315,7 @@ export class AuditStorageManager {
    */
   private async writeBatchToDatabase(events: StoredAuditEvent[]): Promise<void> {
     const dbManager = await getGlobalDatabaseManager()
-    const mysql = dbManager.getConnection('mysql')
+    const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
     if (!mysql.isConnected) {
       await mysql.connect()
@@ -503,7 +503,7 @@ export class AuditStorageManager {
   private async initializeDatabase(): Promise<void> {
     try {
       const dbManager = await getGlobalDatabaseManager()
-      const mysql = dbManager.getConnection('mysql')
+      const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
       if (!mysql.isConnected) {
         await mysql.connect()

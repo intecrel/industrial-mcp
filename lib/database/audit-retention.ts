@@ -140,7 +140,7 @@ export class AuditRetentionManager {
       console.log('📁 Starting audit retention cycle...')
 
       const dbManager = await getGlobalDatabaseManager()
-      const mysql = dbManager.getConnection('mysql')
+      const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
       if (!mysql.isConnected) {
         await mysql.connect()
@@ -209,7 +209,7 @@ export class AuditRetentionManager {
    */
   async getRetentionPolicies(): Promise<RetentionPolicy[]> {
     const dbManager = await getGlobalDatabaseManager()
-    const mysql = dbManager.getConnection('mysql')
+    const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
     const result = await mysql.query(`
       SELECT * FROM audit_retention_policy
@@ -229,7 +229,7 @@ export class AuditRetentionManager {
     storageSpaceSavedMB: number
   }> {
     const dbManager = await getGlobalDatabaseManager()
-    const mysql = dbManager.getConnection('mysql')
+    const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
     const stats = {
       eventsArchived: 0,
@@ -285,7 +285,7 @@ export class AuditRetentionManager {
     spaceSavedMB: number
   }> {
     const dbManager = await getGlobalDatabaseManager()
-    const mysql = dbManager.getConnection('mysql')
+    const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
     // Get events to archive
     const eventsResult = await mysql.query(`
@@ -381,7 +381,7 @@ export class AuditRetentionManager {
     spaceSavedMB: number
   }> {
     const dbManager = await getGlobalDatabaseManager()
-    const mysql = dbManager.getConnection('mysql')
+    const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
     // Get events that need compression
     const eventsResult = await mysql.query(`
@@ -477,7 +477,7 @@ export class AuditRetentionManager {
     count: number
   }> {
     const dbManager = await getGlobalDatabaseManager()
-    const mysql = dbManager.getConnection('mysql')
+    const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
     // Count events to delete
     const countResult = await mysql.query(`
@@ -550,7 +550,7 @@ export class AuditRetentionManager {
    */
   async updateStats(cycleStats: any): Promise<void> {
     const dbManager = await getGlobalDatabaseManager()
-    const mysql = dbManager.getConnection('mysql')
+    const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
     // Get current totals
     const totalsResult = await mysql.query(`
@@ -632,7 +632,7 @@ export async function initializeRetentionSystem(): Promise<void> {
  */
 export async function createOrUpdateRetentionPolicy(policy: Omit<RetentionPolicy, 'id'>): Promise<void> {
   const dbManager = await getGlobalDatabaseManager()
-  const mysql = dbManager.getConnection('mysql')
+  const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
   if (!mysql.isConnected) {
     await mysql.connect()

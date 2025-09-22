@@ -221,7 +221,7 @@ export async function GET(request: NextRequest) {
 
     // Get database connection
     const dbManager = await getGlobalDatabaseManager()
-    const mysql = dbManager.getConnection('mysql')
+    const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
     if (!mysql.isConnected) {
       await mysql.connect()
@@ -308,7 +308,7 @@ export async function POST(request: NextRequest) {
     const { queryType, ...queryParams } = body
 
     const dbManager = await getGlobalDatabaseManager()
-    const mysql = dbManager.getConnection('mysql')
+    const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
     if (!mysql.isConnected) {
       await mysql.connect()

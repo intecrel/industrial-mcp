@@ -59,7 +59,7 @@ export interface ComplianceReport {
  */
 export async function queryAuditEvents(options: AuditQueryOptions = {}) {
   const dbManager = await getGlobalDatabaseManager()
-  const mysql = dbManager.getConnection('mysql')
+  const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
   if (!mysql.isConnected) {
     await mysql.connect()
@@ -167,7 +167,7 @@ export async function getAuditSummary(
   endDate?: Date | string
 ): Promise<AuditSummary> {
   const dbManager = await getGlobalDatabaseManager()
-  const mysql = dbManager.getConnection('mysql')
+  const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
   if (!mysql.isConnected) {
     await mysql.connect()
@@ -260,7 +260,7 @@ export async function getDatabasePerformanceMetrics(
   timeframe: string = '24h'
 ): Promise<DatabasePerformanceMetrics[]> {
   const dbManager = await getGlobalDatabaseManager()
-  const mysql = dbManager.getConnection('mysql')
+  const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
   if (!mysql.isConnected) {
     await mysql.connect()
@@ -297,7 +297,7 @@ export async function generateComplianceReport(
   endDate: Date | string
 ): Promise<ComplianceReport> {
   const dbManager = await getGlobalDatabaseManager()
-  const mysql = dbManager.getConnection('mysql')
+  const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
   if (!mysql.isConnected) {
     await mysql.connect()
@@ -391,7 +391,7 @@ export async function searchAuditEvents(
   }
 
   const dbManager = await getGlobalDatabaseManager()
-  const mysql = dbManager.getConnection('mysql')
+  const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
   if (!mysql.isConnected) {
     await mysql.connect()
@@ -462,7 +462,7 @@ export async function getAuditTimeline(
   groupBy: 'hour' | 'day' = 'hour'
 ) {
   const dbManager = await getGlobalDatabaseManager()
-  const mysql = dbManager.getConnection('mysql')
+  const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
   if (!mysql.isConnected) {
     await mysql.connect()
