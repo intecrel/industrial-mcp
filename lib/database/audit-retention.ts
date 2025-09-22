@@ -231,7 +231,7 @@ export class AuditRetentionManager {
     const dbManager = await getGlobalDatabaseManager()
     const mysql = dbManager.getConnection('mysql')
 
-    let stats = {
+    const stats = {
       eventsArchived: 0,
       eventsDeleted: 0,
       eventsCompressed: 0,
