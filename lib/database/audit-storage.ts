@@ -537,8 +537,9 @@ export class AuditStorageManager {
 
     } catch (error) {
       console.error('❌ Failed to initialize audit database:', error)
-      // Don't throw error to prevent audit system from being completely disabled
-      console.error('⚠️ Continuing with audit system disabled due to initialization failure')
+      console.error('🔍 Full error details:', JSON.stringify(error, null, 2))
+      // Temporarily throw error to see exact issue
+      throw error
     }
   }
 

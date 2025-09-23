@@ -490,10 +490,22 @@ export class MySQLConnection extends BaseDatabaseConnection {
       /\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+audit_retention_policy\b/
     ]
 
-    const isAuditTableCreation = auditTablePatterns.some(pattern => pattern.test(upperSql))
+    const isAuditTableCreation = auditTablePatterns.some(pattern => {
+      const match = pattern.test(upperSql)
+      if (match) {
+        console.log('✅ Pattern matched:', pattern.source)
+      }
+      return match
+    })
+
     if (isAuditTableCreation) {
-      console.log('✅ Allowing audit table creation:', sql.substring(0, 50) + '...')
+      console.log('✅ Allowing audit table creation:', sql.substring(0, 100) + '...')
       return // Allow audit table creation
+    }
+
+    // Debug: Log first part of non-matching SQL for troubleshooting
+    if (upperSql.startsWith('CREATE TABLE')) {
+      console.log('🔍 CREATE TABLE detected but no audit pattern match:', sql.substring(0, 100) + '...')
     }
 
     // Security: Block dangerous operations for MCP endpoints
