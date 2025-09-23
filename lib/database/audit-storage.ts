@@ -170,7 +170,14 @@ export class AuditStorageManager {
     console.log(`🗄️ Initializing audit storage: ${this.config.storageType} mode`)
 
     if (this.config.storageType === 'database' || this.config.storageType === 'hybrid') {
-      await this.initializeDatabase()
+      console.log('🔄 About to call initializeDatabase()...')
+      try {
+        await this.initializeDatabase()
+        console.log('✅ initializeDatabase() completed successfully')
+      } catch (error) {
+        console.error('❌ initializeDatabase() threw an error:', error)
+        throw error
+      }
     }
 
     // Set up batch flushing if using database storage
