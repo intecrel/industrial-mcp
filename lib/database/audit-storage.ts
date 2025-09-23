@@ -156,6 +156,7 @@ INSERT IGNORE INTO audit_retention_policy (event_type, retention_days, archive_a
 export class AuditStorageManager {
   private config: AuditStorageConfig
   private isInitialized = false
+  private isDatabaseInitialized = false
 
   constructor(config: AuditStorageConfig = DEFAULT_AUDIT_CONFIG) {
     this.config = config
@@ -176,6 +177,7 @@ export class AuditStorageManager {
       console.log('🔄 About to call initializeDatabase()...')
       try {
         await this.initializeDatabase()
+        this.isDatabaseInitialized = true
         console.log('✅ initializeDatabase() completed successfully')
       } catch (error) {
         console.error('❌ initializeDatabase() threw an error:', error)
@@ -207,6 +209,8 @@ export class AuditStorageManager {
 
     // Store in database if configured
     if (this.config.storageType === 'database' || this.config.storageType === 'hybrid') {
+      // Ensure database is initialized before storing
+      await this.ensureDatabaseInitialized()
       await this.addToBatch(event)
     }
   }
@@ -228,6 +232,23 @@ export class AuditStorageManager {
     // Store database-specific data separately if using database storage
     if (this.config.storageType === 'database' || this.config.storageType === 'hybrid') {
       // This will be handled by the batch processing with extended data
+    }
+  }
+
+  /**
+   * Ensure database is initialized (called before storing events)
+   */
+  private async ensureDatabaseInitialized(): Promise<void> {
+    if (!this.isDatabaseInitialized) {
+      console.log('🔄 Database not initialized, initializing now...')
+      try {
+        await this.initializeDatabase()
+        this.isDatabaseInitialized = true
+        console.log('✅ Database initialization completed on-demand')
+      } catch (error) {
+        console.error('❌ Failed to initialize database on-demand:', error)
+        throw error
+      }
     }
   }
 
@@ -324,6 +345,9 @@ export class AuditStorageManager {
    * Write batch of events to database
    */
   private async writeBatchToDatabase(events: StoredAuditEvent[]): Promise<void> {
+    // Ensure database is initialized before writing
+    await this.ensureDatabaseInitialized()
+
     const dbManager = await getGlobalDatabaseManager()
     const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
