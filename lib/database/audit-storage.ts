@@ -165,7 +165,10 @@ export class AuditStorageManager {
    * Initialize audit storage system
    */
   async initialize(): Promise<void> {
-    if (this.isInitialized) return
+    if (this.isInitialized) {
+      console.log(`⚠️ Audit storage already initialized, skipping initialization`)
+      return
+    }
 
     console.log(`🗄️ Initializing audit storage: ${this.config.storageType} mode`)
 
