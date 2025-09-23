@@ -20,14 +20,14 @@ export interface AuditStorageConfig {
 
 // Default configuration - optimized for performance
 export const DEFAULT_AUDIT_CONFIG: AuditStorageConfig = {
-  enabled: process.env.AUDIT_STORAGE_ENABLED === 'true',
-  storageType: (process.env.AUDIT_STORAGE_TYPE as any) || 'hybrid',
+  enabled: process.env.AUDIT_STORAGE_ENABLED?.trim() === 'true',
+  storageType: (process.env.AUDIT_STORAGE_TYPE?.trim() as any) || 'hybrid',
   batchSize: parseInt(process.env.AUDIT_BATCH_SIZE || '50'),
   flushIntervalMs: parseInt(process.env.AUDIT_FLUSH_INTERVAL_MS || '30000'), // 30 seconds
   retentionDays: parseInt(process.env.AUDIT_RETENTION_DAYS || '2555'), // 7 years
-  enableStateCapture: process.env.AUDIT_ENABLE_STATE_CAPTURE !== 'false',
+  enableStateCapture: process.env.AUDIT_ENABLE_STATE_CAPTURE?.trim() !== 'false',
   maxStateSizeKB: parseInt(process.env.AUDIT_MAX_STATE_SIZE_KB || '1024'), // 1MB
-  compressionEnabled: process.env.AUDIT_COMPRESSION_ENABLED === 'true'
+  compressionEnabled: process.env.AUDIT_COMPRESSION_ENABLED?.trim() === 'true'
 }
 
 // Audit event storage interface
@@ -110,9 +110,6 @@ CREATE TABLE IF NOT EXISTS database_audit_events (
   state_size_bytes INT DEFAULT 0,
   compressed BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-  -- Foreign key relationship
-  FOREIGN KEY (audit_event_id) REFERENCES audit_events(id) ON DELETE CASCADE,
 
   -- Performance indexes
   INDEX idx_audit_event_id (audit_event_id),
