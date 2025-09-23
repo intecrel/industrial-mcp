@@ -502,27 +502,43 @@ export class AuditStorageManager {
    */
   private async initializeDatabase(): Promise<void> {
     try {
+      console.log('🔧 Starting audit database initialization...')
+
       const dbManager = await getGlobalDatabaseManager()
       const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
 
+      console.log('🔗 Got database connection, checking if connected...')
       if (!mysql.isConnected) {
+        console.log('🔗 Connecting to database...')
         await mysql.connect()
       }
+      console.log('✅ Database connected successfully')
 
-      // Execute schema creation
+      // Execute schema creation with better error handling
       const statements = AUDIT_SCHEMA_SQL.split(';').filter(stmt => stmt.trim())
+      console.log(`📝 Executing ${statements.length} SQL statements...`)
 
-      for (const statement of statements) {
-        if (statement.trim()) {
-          await mysql.query(statement)
+      for (let i = 0; i < statements.length; i++) {
+        const statement = statements[i].trim()
+        if (statement) {
+          try {
+            console.log(`🔄 Executing statement ${i + 1}/${statements.length}`)
+            await mysql.query(statement)
+            console.log(`✅ Statement ${i + 1} executed successfully`)
+          } catch (statementError) {
+            console.error(`❌ Failed to execute statement ${i + 1}:`, statementError)
+            console.error(`📝 Statement was: ${statement.substring(0, 100)}...`)
+            throw statementError
+          }
         }
       }
 
-      console.log('✅ Audit database schema initialized')
+      console.log('✅ Audit database schema initialized successfully')
 
     } catch (error) {
       console.error('❌ Failed to initialize audit database:', error)
-      throw error
+      // Don't throw error to prevent audit system from being completely disabled
+      console.error('⚠️ Continuing with audit system disabled due to initialization failure')
     }
   }
 
