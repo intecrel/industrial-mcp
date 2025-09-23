@@ -482,7 +482,20 @@ export class MySQLConnection extends BaseDatabaseConnection {
 
   private validateQuerySecurity(sql: string): void {
     const upperSql = sql.toUpperCase().trim()
-    
+
+    // Exception: Allow CREATE TABLE for audit system tables
+    const auditTablePatterns = [
+      /\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+audit_events\b/,
+      /\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+database_audit_events\b/,
+      /\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+audit_retention_policy\b/
+    ]
+
+    const isAuditTableCreation = auditTablePatterns.some(pattern => pattern.test(upperSql))
+    if (isAuditTableCreation) {
+      console.log('✅ Allowing audit table creation:', sql.substring(0, 50) + '...')
+      return // Allow audit table creation
+    }
+
     // Security: Block dangerous operations for MCP endpoints
     const dangerousPatterns = [
       /\bDROP\s+/,
@@ -496,7 +509,7 @@ export class MySQLConnection extends BaseDatabaseConnection {
       /\bINTO\s+OUTFILE\s+/,
       /\bINTO\s+DUMPFILE\s+/
     ]
-    
+
     for (const pattern of dangerousPatterns) {
       if (pattern.test(upperSql)) {
         throw new Error(`Security: SQL query contains potentially dangerous operation: ${pattern.source}`)
