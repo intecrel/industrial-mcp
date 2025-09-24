@@ -529,6 +529,42 @@ export class AuditStorageManager {
   }
 
   /**
+   * Verify all required audit tables exist
+   */
+  private async verifyTablesExist(mysql: any): Promise<void> {
+    const requiredTables = ['audit_events', 'database_audit_events', 'audit_retention_policy']
+    const missingTables: string[] = []
+
+    for (const tableName of requiredTables) {
+      try {
+        console.log(`🔍 Checking if table '${tableName}' exists...`)
+        const result = await mysql.query(
+          `SELECT COUNT(*) as table_count FROM information_schema.tables
+           WHERE table_schema = DATABASE() AND table_name = ?`,
+          [tableName]
+        )
+
+        const tableCount = result[0]?.[0]?.table_count || 0
+        if (tableCount === 0) {
+          missingTables.push(tableName)
+          console.error(`❌ Table '${tableName}' does not exist`)
+        } else {
+          console.log(`✅ Table '${tableName}' exists`)
+        }
+      } catch (error) {
+        console.error(`❌ Error checking table '${tableName}':`, error)
+        missingTables.push(tableName)
+      }
+    }
+
+    if (missingTables.length > 0) {
+      throw new Error(`Audit table verification failed. Missing tables: ${missingTables.join(', ')}`)
+    }
+
+    console.log(`✅ All ${requiredTables.length} required audit tables verified successfully`)
+  }
+
+  /**
    * Initialize database schema
    */
   private async initializeDatabase(): Promise<void> {
@@ -545,24 +581,65 @@ export class AuditStorageManager {
       }
       console.log('✅ Database connected successfully')
 
-      // Execute schema creation with better error handling
+      // Execute schema creation with enhanced error handling
       const statements = AUDIT_SCHEMA_SQL.split(';').filter(stmt => stmt.trim())
       console.log(`📝 Executing ${statements.length} SQL statements...`)
+
+      let executionResults = []
 
       for (let i = 0; i < statements.length; i++) {
         const statement = statements[i].trim()
         if (statement) {
           try {
             console.log(`🔄 Executing statement ${i + 1}/${statements.length}`)
-            await mysql.query(statement)
-            console.log(`✅ Statement ${i + 1} executed successfully`)
-          } catch (statementError) {
+            const startTime = Date.now()
+            const result = await mysql.query(statement)
+            const executionTime = Date.now() - startTime
+
+            console.log(`✅ Statement ${i + 1} executed successfully (${executionTime}ms)`)
+            executionResults.push({
+              index: i + 1,
+              success: true,
+              executionTime,
+              statement: statement.substring(0, 50) + '...'
+            })
+          } catch (statementError: any) {
             console.error(`❌ Failed to execute statement ${i + 1}:`, statementError)
             console.error(`📝 Statement was: ${statement.substring(0, 100)}...`)
-            throw statementError
+            console.error(`🔍 Error details:`, {
+              message: statementError.message,
+              code: statementError.code,
+              errno: statementError.errno,
+              sqlState: statementError.sqlState
+            })
+
+            executionResults.push({
+              index: i + 1,
+              success: false,
+              error: statementError.message,
+              statement: statement.substring(0, 50) + '...'
+            })
+
+            // Don't throw immediately - collect all results first
           }
         }
       }
+
+      // Check if any critical statements failed
+      const failedStatements = executionResults.filter(r => !r.success)
+      if (failedStatements.length > 0) {
+        console.error(`❌ ${failedStatements.length}/${statements.length} statements failed:`)
+        failedStatements.forEach(fail => {
+          console.error(`  - Statement ${fail.index}: ${fail.error}`)
+        })
+        throw new Error(`Audit schema initialization failed: ${failedStatements.length} of ${statements.length} statements failed`)
+      }
+
+      console.log(`🎯 All ${statements.length} statements executed successfully`)
+
+      // Verify all required tables exist before declaring success
+      console.log('🔍 Verifying audit tables were created successfully...')
+      await this.verifyTablesExist(mysql)
 
       console.log('✅ Audit database schema initialized successfully')
 

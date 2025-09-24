@@ -108,7 +108,11 @@ export class MySQLConnection extends BaseDatabaseConnection {
         dateStrings: false,
         multipleStatements: this.mysqlConfig.multipleStatements || false,
         charset: this.mysqlConfig.charset || 'utf8mb4',
-        idleTimeout: 300000,
+        // Connection timeout settings for table creation operations
+        connectTimeout: 120000, // 2 minutes to establish connection
+        acquireTimeout: 120000, // 2 minutes to acquire connection from pool
+        timeout: 180000, // 3 minutes for query execution (table creation)
+        idleTimeout: 300000, // 5 minutes idle timeout
         keepAliveInitialDelay: 0,
         enableKeepAlive: true
       }
@@ -176,10 +180,13 @@ export class MySQLConnection extends BaseDatabaseConnection {
       dateStrings: false,
       multipleStatements: this.mysqlConfig.multipleStatements || false,
       charset: this.mysqlConfig.charset || 'utf8mb4',
-      
-      // Connection health monitoring
-      idleTimeout: 300000, // 5 minutes
-      
+
+      // Connection timeout settings for table creation operations
+      connectTimeout: 120000, // 2 minutes to establish connection
+      acquireTimeout: 120000, // 2 minutes to acquire connection from pool
+      timeout: 180000, // 3 minutes for query execution (table creation)
+      idleTimeout: 300000, // 5 minutes idle timeout
+
       // Cloud SQL optimizations
       keepAliveInitialDelay: 0,
       enableKeepAlive: true
