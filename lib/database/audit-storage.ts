@@ -585,7 +585,7 @@ export class AuditStorageManager {
       const statements = AUDIT_SCHEMA_SQL.split(';').filter(stmt => stmt.trim())
       console.log(`📝 Executing ${statements.length} SQL statements...`)
 
-      let executionResults = []
+      const executionResults = []
 
       for (let i = 0; i < statements.length; i++) {
         const statement = statements[i].trim()
