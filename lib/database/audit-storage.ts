@@ -594,14 +594,15 @@ export class AuditStorageManager {
         const statement = statements[i].trim()
         if (statement) {
           try {
-            console.log(`🔄 Executing statement ${i + 1}/${statements.length}: ${statement.substring(0, 80)}...`)
+            // Print the full statement for debugging
+            console.log(`🔄 Executing statement ${i + 1}/${statements.length}:\n${statement}\n---`)
             const startTime = Date.now()
             const result = await mysql.query(statement)
             const executionTime = Date.now() - startTime
             console.log(`✅ Statement ${i + 1} executed successfully (${executionTime}ms)`)
           } catch (statementError: any) {
             console.error(`❌ Failed to execute statement ${i + 1}:`, statementError)
-            console.error(`📝 Statement was: ${statement.substring(0, 100)}...`)
+            console.error(`📝 Statement was:\n${statement}\n---`)
             throw statementError // rethrow so you see the error in logs
           }
         }
