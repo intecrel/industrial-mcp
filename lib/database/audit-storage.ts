@@ -60,7 +60,6 @@ let flushTimer: NodeJS.Timeout | null = null
  * Database schema creation SQL
  */
 export const AUDIT_SCHEMA_SQL = `
--- Audit Events Table
 CREATE TABLE IF NOT EXISTS audit_events (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   timestamp DATETIME(6) NOT NULL,
@@ -92,7 +91,6 @@ CREATE TABLE IF NOT EXISTS audit_events (
   INDEX idx_composite_type_time (event_type, timestamp)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Database-specific Audit Events Table
 CREATE TABLE IF NOT EXISTS database_audit_events (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   audit_event_id BIGINT NOT NULL,
@@ -111,7 +109,6 @@ CREATE TABLE IF NOT EXISTS database_audit_events (
   compressed BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-  -- Performance indexes
   INDEX idx_audit_event_id (audit_event_id),
   INDEX idx_database_type (database_type),
   INDEX idx_operation_type (operation_type),
@@ -123,7 +120,6 @@ CREATE TABLE IF NOT EXISTS database_audit_events (
   INDEX idx_composite_db_time (database_type, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Audit Event Retention Policy Table
 CREATE TABLE IF NOT EXISTS audit_retention_policy (
   id INT PRIMARY KEY AUTO_INCREMENT,
   event_type VARCHAR(100) NOT NULL,
@@ -137,14 +133,13 @@ CREATE TABLE IF NOT EXISTS audit_retention_policy (
   UNIQUE KEY uk_event_type (event_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Insert default retention policies
 INSERT IGNORE INTO audit_retention_policy (event_type, retention_days, archive_after_days, delete_after_days, compress_after_days) VALUES
-  ('database.neo4j.%', 2555, 365, 2555, 90),  -- 7 years for database operations
-  ('security.%', 2190, 365, 2190, 30),        -- 6 years for security events
-  ('oauth.%', 1095, 180, 1095, 60),           -- 3 years for OAuth events
-  ('auth.%', 730, 90, 730, 30),               -- 2 years for auth events
-  ('system.%', 365, 90, 365, 30),             -- 1 year for system events
-  ('default', 365, 90, 365, 30);              -- Default 1 year
+  ('database.neo4j.%', 2555, 365, 2555, 90),
+  ('security.%', 2190, 365, 2190, 30),
+  ('oauth.%', 1095, 180, 1095, 60),
+  ('auth.%', 730, 90, 730, 30),
+  ('system.%', 365, 90, 365, 30),
+  ('default', 365, 90, 365, 30);
 `;
 
 /**
