@@ -588,42 +588,21 @@ export class AuditStorageManager {
         .filter(stmt => stmt.length > 0);
       console.log(`📝 Executing ${statements.length} SQL statements...`)
 
-      const executionResults = []
+      const executionResults: any[] = []
 
       for (let i = 0; i < statements.length; i++) {
         const statement = statements[i].trim()
         if (statement) {
           try {
-            console.log(`🔄 Executing statement ${i + 1}/${statements.length}`)
+            console.log(`🔄 Executing statement ${i + 1}/${statements.length}: ${statement.substring(0, 80)}...`)
             const startTime = Date.now()
             const result = await mysql.query(statement)
             const executionTime = Date.now() - startTime
-
             console.log(`✅ Statement ${i + 1} executed successfully (${executionTime}ms)`)
-            executionResults.push({
-              index: i + 1,
-              success: true,
-              executionTime,
-              statement: statement.substring(0, 50) + '...'
-            })
           } catch (statementError: any) {
             console.error(`❌ Failed to execute statement ${i + 1}:`, statementError)
             console.error(`📝 Statement was: ${statement.substring(0, 100)}...`)
-            console.error(`🔍 Error details:`, {
-              message: statementError.message,
-              code: statementError.code,
-              errno: statementError.errno,
-              sqlState: statementError.sqlState
-            })
-
-            executionResults.push({
-              index: i + 1,
-              success: false,
-              error: statementError.message,
-              statement: statement.substring(0, 50) + '...'
-            })
-
-            // Don't throw immediately - collect all results first
+            throw statementError // rethrow so you see the error in logs
           }
         }
       }
