@@ -77,8 +77,6 @@ CREATE TABLE IF NOT EXISTS audit_events (
   details JSON,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-  -- Indexing strategy for performance
   INDEX idx_timestamp (timestamp),
   INDEX idx_event_type (event_type),
   INDEX idx_user_id (user_id),
@@ -89,58 +87,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
   INDEX idx_created_at (created_at),
   INDEX idx_composite_user_time (user_id, timestamp),
   INDEX idx_composite_type_time (event_type, timestamp)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS database_audit_events (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  audit_event_id BIGINT NOT NULL,
-  database_type ENUM('neo4j', 'mysql') NOT NULL,
-  operation_type ENUM('CREATE', 'MERGE', 'SET', 'READ') NOT NULL,
-  query_hash VARCHAR(64) NOT NULL,
-  affected_nodes INT DEFAULT 0,
-  affected_relationships INT DEFAULT 0,
-  execution_time_ms INT NOT NULL,
-  complexity_score INT DEFAULT 0,
-  transaction_id VARCHAR(100),
-  query_parameters JSON,
-  before_state JSON,
-  after_state JSON,
-  state_size_bytes INT DEFAULT 0,
-  compressed BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-  INDEX idx_audit_event_id (audit_event_id),
-  INDEX idx_database_type (database_type),
-  INDEX idx_operation_type (operation_type),
-  INDEX idx_query_hash (query_hash),
-  INDEX idx_transaction_id (transaction_id),
-  INDEX idx_execution_time (execution_time_ms),
-  INDEX idx_complexity (complexity_score),
-  INDEX idx_composite_db_op (database_type, operation_type),
-  INDEX idx_composite_db_time (database_type, created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS audit_retention_policy (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  event_type VARCHAR(100) NOT NULL,
-  retention_days INT NOT NULL,
-  archive_after_days INT,
-  delete_after_days INT,
-  compress_after_days INT DEFAULT 90,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-  UNIQUE KEY uk_event_type (event_type)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-INSERT IGNORE INTO audit_retention_policy (event_type, retention_days, archive_after_days, delete_after_days, compress_after_days) VALUES
-  ('database.neo4j.%', 2555, 365, 2555, 90),
-  ('security.%', 2190, 365, 2190, 30),
-  ('oauth.%', 1095, 180, 1095, 60),
-  ('auth.%', 730, 90, 730, 30),
-  ('system.%', 365, 90, 365, 30),
-  ('default', 365, 90, 365, 30);
-`;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`;
 
 /**
  * Audit Storage Manager
