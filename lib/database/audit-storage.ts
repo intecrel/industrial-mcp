@@ -582,7 +582,10 @@ export class AuditStorageManager {
       console.log('✅ Database connected successfully')
 
       // Execute schema creation with enhanced error handling
-      const statements = AUDIT_SCHEMA_SQL.split(';').filter(stmt => stmt.trim())
+      const statements = AUDIT_SCHEMA_SQL
+        .split(/;\s*\n/) // Split only on semicolon followed by newline
+        .map(stmt => stmt.trim())
+        .filter(stmt => stmt.length > 0);
       console.log(`📝 Executing ${statements.length} SQL statements...`)
 
       const executionResults = []
