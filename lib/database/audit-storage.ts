@@ -87,7 +87,56 @@ CREATE TABLE IF NOT EXISTS audit_events (
   INDEX idx_created_at (created_at),
   INDEX idx_composite_user_time (user_id, timestamp),
   INDEX idx_composite_type_time (event_type, timestamp)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS database_audit_events (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  audit_event_id BIGINT NOT NULL,
+  database_type ENUM('neo4j', 'mysql') NOT NULL,
+  operation_type ENUM('CREATE', 'MERGE', 'SET', 'READ') NOT NULL,
+  query_hash VARCHAR(64) NOT NULL,
+  affected_nodes INT DEFAULT 0,
+  affected_relationships INT DEFAULT 0,
+  execution_time_ms INT NOT NULL,
+  complexity_score INT DEFAULT 0,
+  transaction_id VARCHAR(100),
+  query_parameters JSON,
+  before_state JSON,
+  after_state JSON,
+  state_size_bytes INT DEFAULT 0,
+  compressed BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_audit_event_id (audit_event_id),
+  INDEX idx_database_type (database_type),
+  INDEX idx_operation_type (operation_type),
+  INDEX idx_query_hash (query_hash),
+  INDEX idx_transaction_id (transaction_id),
+  INDEX idx_execution_time (execution_time_ms),
+  INDEX idx_complexity (complexity_score),
+  INDEX idx_composite_db_op (database_type, operation_type),
+  INDEX idx_composite_db_time (database_type, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS audit_retention_policy (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  event_type VARCHAR(100) NOT NULL,
+  retention_days INT NOT NULL,
+  archive_after_days INT,
+  delete_after_days INT,
+  compress_after_days INT DEFAULT 90,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_event_type (event_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO audit_retention_policy (event_type, retention_days, archive_after_days, delete_after_days, compress_after_days) VALUES
+  ('database.neo4j.%', 2555, 365, 2555, 90),
+  ('security.%', 2190, 365, 2190, 30),
+  ('oauth.%', 1095, 180, 1095, 60),
+  ('auth.%', 730, 90, 730, 30),
+  ('system.%', 365, 90, 365, 30),
+  ('default', 365, 90, 365, 30);
+`;
 
 /**
  * Audit Storage Manager
@@ -507,7 +556,33 @@ export class AuditStorageManager {
   }
 
   /**
-   * Initialize database schema
+   * Check if audit tables already exist
+   */
+  private async checkTablesExist(mysql: any): Promise<{ allExist: boolean; existingTables: string[] }> {
+    try {
+      const result = await mysql.query(`
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name LIKE 'audit%'
+        ORDER BY table_name
+      `)
+
+      const existingTables = result[0]?.map((row: any) => row.table_name) || []
+      const expectedTables = ['audit_events', 'database_audit_events', 'audit_retention_policy']
+      const allExist = expectedTables.every(table => existingTables.includes(table))
+
+      console.log(`📋 Audit tables status: ${existingTables.length}/${expectedTables.length} exist`)
+      console.log(`📋 Existing: ${existingTables.join(', ') || 'none'}`)
+
+      return { allExist, existingTables }
+    } catch (error) {
+      console.error('❌ Failed to check existing tables:', error)
+      return { allExist: false, existingTables: [] }
+    }
+  }
+
+  /**
+   * Initialize database schema (skips if tables already exist)
    */
   private async initializeDatabase(): Promise<void> {
     try {
@@ -523,14 +598,24 @@ export class AuditStorageManager {
       }
       console.log('✅ Database connected successfully')
 
+      // Check if tables already exist
+      const { allExist, existingTables } = await this.checkTablesExist(mysql)
+
+      if (allExist) {
+        console.log('✅ All audit tables already exist, skipping schema creation')
+        console.log('💡 Tables were likely created by migration script during deployment')
+        return
+      }
+
+      console.log('🔨 Some audit tables missing, attempting creation...')
+      console.log('💡 Note: Consider running migration script: npm run migrate:audit')
+
       // Execute schema creation with enhanced error handling
       const statements = AUDIT_SCHEMA_SQL
         .split(/;\s*\n/) // Split only on semicolon followed by newline
         .map(stmt => stmt.trim())
         .filter(stmt => stmt.length > 0);
       console.log(`📝 Executing ${statements.length} SQL statements...`)
-
-      const executionResults: any[] = []
 
       for (let i = 0; i < statements.length; i++) {
         const statement = statements[i].trim()
@@ -545,22 +630,21 @@ export class AuditStorageManager {
           } catch (statementError: any) {
             console.error(`❌ Failed to execute statement ${i + 1}:`, statementError)
             console.error(`📝 Statement was:\n${statement}\n---`)
-            throw statementError // rethrow so you see the error in logs
+
+            // For CREATE TABLE statements, check if the error is just a permission issue
+            if (statement.includes('CREATE TABLE') &&
+                (statementError.message.includes('denied') || statementError.message.includes('permission'))) {
+              console.warn('⚠️ CREATE TABLE failed due to permissions - this is expected in some environments')
+              console.warn('💡 Run migration script separately: npm run migrate:audit')
+              continue
+            }
+
+            throw statementError // rethrow for other errors
           }
         }
       }
 
-      // Check if any critical statements failed
-      const failedStatements = executionResults.filter(r => !r.success)
-      if (failedStatements.length > 0) {
-        console.error(`❌ ${failedStatements.length}/${statements.length} statements failed:`)
-        failedStatements.forEach(fail => {
-          console.error(`  - Statement ${fail.index}: ${fail.error}`)
-        })
-        throw new Error(`Audit schema initialization failed: ${failedStatements.length} of ${statements.length} statements failed`)
-      }
-
-      console.log(`🎯 All ${statements.length} statements executed successfully`)
+      console.log(`🎯 Schema creation completed`)
 
       // Verify all required tables exist before declaring success
       console.log('🔍 Verifying audit tables were created successfully...')
@@ -570,9 +654,12 @@ export class AuditStorageManager {
 
     } catch (error) {
       console.error('❌ Failed to initialize audit database:', error)
-      console.error('🔍 Full error details:', JSON.stringify(error, null, 2))
-      // Temporarily throw error to see exact issue
-      throw error
+      console.warn('💡 Consider running migration script manually: npm run migrate:audit')
+      console.warn('💡 Or use API endpoint: POST /api/admin/migrate-audit')
+
+      // Don't throw error to prevent breaking the main application
+      // Audit storage will fall back to console-only mode
+      console.warn('⚠️ Continuing without database audit storage (console-only mode)')
     }
   }
 
