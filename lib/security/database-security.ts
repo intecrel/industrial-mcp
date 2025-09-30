@@ -134,9 +134,10 @@ export class DatabaseSecurityValidator {
 
     // Cloud SQL security
     const hasCloudSQLConnector = !!process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME
+    const hasCloudSQLDatabase = !!(process.env.CLOUD_SQL_DB_PRIMARY || process.env.CLOUD_SQL_DB_STAGING)
     checks.push({
       name: 'Cloud SQL Connector',
-      passed: hasCloudSQLConnector || !process.env.CLOUD_SQL_DATABASE_NAME,
+      passed: hasCloudSQLConnector || !hasCloudSQLDatabase,
       severity: 'medium',
       message: hasCloudSQLConnector ? 'Using Cloud SQL Connector (secure)' : 'Direct MySQL connection',
       recommendation: hasCloudSQLConnector ? undefined : 'Consider using Cloud SQL Connector for enhanced security'

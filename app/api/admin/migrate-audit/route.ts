@@ -67,15 +67,49 @@ export async function GET(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mysql = require('mysql2/promise')
 
-    const config = {
-      host: process.env.CLOUD_SQL_HOST || '34.69.40.212',
-      port: parseInt(process.env.CLOUD_SQL_PORT || '3306'),
-      user: process.env.CLOUD_SQL_USERNAME || 'mcp-reader',
-      password: process.env.CLOUD_SQL_PASSWORD,
-      database: process.env.CLOUD_SQL_DATABASE_NAME || 'seoptinalytics-staging',
-      connectTimeout: 30000,
-      acquireTimeout: 30000,
-      timeout: 60000
+    // Environment-aware database selection
+    const isLocal = process.env.NODE_ENV !== 'production' && !process.env.VERCEL_ENV
+    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production'
+
+    let config: any
+
+    // Priority 1: Local MySQL
+    if (isLocal && process.env.MYSQL_HOST) {
+      config = {
+        host: process.env.MYSQL_HOST,
+        port: parseInt(process.env.MYSQL_PORT || '3306'),
+        user: process.env.MYSQL_USERNAME || 'root',
+        password: process.env.MYSQL_PASSWORD,
+        database: process.env.MYSQL_DATABASE,
+        connectTimeout: 30000
+      }
+    }
+    // Priority 2: Cloud SQL
+    else {
+      const database = isProduction
+        ? (process.env.CLOUD_SQL_DB_PRIMARY || process.env.CLOUD_SQL_DB_STAGING)
+        : (process.env.CLOUD_SQL_DB_STAGING || process.env.CLOUD_SQL_DB_PRIMARY)
+
+      config = {
+        host: process.env.CLOUD_SQL_HOST,
+        port: parseInt(process.env.CLOUD_SQL_PORT || '3306'),
+        user: process.env.CLOUD_SQL_USERNAME || 'mcp_user',
+        password: process.env.CLOUD_SQL_PASSWORD,
+        database: database,
+        connectTimeout: 30000
+      }
+    }
+
+    if (!config.host || !config.password || !config.database) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Configuration error',
+          message: 'Missing required database configuration. Local: MYSQL_HOST/PASSWORD/DATABASE, Cloud: CLOUD_SQL_HOST/PASSWORD and CLOUD_SQL_DB_PRIMARY or CLOUD_SQL_DB_STAGING',
+          timestamp: new Date().toISOString()
+        },
+        { status: 500 }
+      )
     }
 
     const connection = await mysql.createConnection(config)
@@ -88,7 +122,7 @@ export async function GET(request: NextRequest) {
         ORDER BY table_name
       `, [config.database])
 
-      const existingTables = rows.map((row: any) => row.table_name)
+      const existingTables = rows.map((row: any) => row.table_name || row.TABLE_NAME)
       const expectedTables = ['audit_events', 'database_audit_events', 'audit_retention_policy']
       const missingTables = expectedTables.filter(table => !existingTables.includes(table))
 

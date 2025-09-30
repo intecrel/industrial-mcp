@@ -6,6 +6,14 @@
  * permission and timing issues in the main application flow.
  */
 
+// Load environment variables from .env.local (for local development)
+try {
+  require('dotenv').config({ path: '.env.local' });
+} catch (error) {
+  // dotenv not installed - environment variables must be passed directly
+  console.log('ℹ️  dotenv not available, using existing environment variables');
+}
+
 const mysql = require('mysql2/promise');
 
 // Migration configuration
@@ -98,48 +106,101 @@ INSERT IGNORE INTO audit_retention_policy (event_type, retention_days, archive_a
 
 /**
  * Get database configuration from environment
+ * Matches the logic in lib/database/manager.ts for consistency
  */
 function getDatabaseConfig() {
   // Check if we're in local development mode
   const isLocal = process.env.NODE_ENV !== 'production' && !process.env.VERCEL_ENV;
 
+  console.log('🔧 Environment detection:');
+  console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
+  console.log(`   VERCEL_ENV: ${process.env.VERCEL_ENV || 'not set'}`);
+  console.log(`   Is Local: ${isLocal}`);
+
   let config;
 
+  // Priority 1: Local MySQL (development with explicit local database)
   if (isLocal && process.env.MYSQL_HOST) {
-    // Use local MySQL configuration
+    console.log('📍 Using LOCAL MySQL configuration');
     config = {
-      host: process.env.MYSQL_HOST || 'localhost',
+      host: process.env.MYSQL_HOST,
       port: parseInt(process.env.MYSQL_PORT || '3306'),
-      user: process.env.MYSQL_USERNAME || 'root',
+      user: process.env.MYSQL_USERNAME || process.env.MYSQL_USER || 'root',
       password: process.env.MYSQL_PASSWORD,
-      database: process.env.MYSQL_DATABASE || 'seoptinalytics-agency',
+      database: process.env.MYSQL_DATABASE || 'industrial_mcp',
       connectTimeout: MIGRATION_CONFIG.connectionTimeout,
-      acquireTimeout: MIGRATION_CONFIG.connectionTimeout,
-      timeout: MIGRATION_CONFIG.queryTimeout,
       charset: 'utf8mb4'
     };
 
     if (!config.password) {
       throw new Error('MYSQL_PASSWORD environment variable is required for local development');
     }
-  } else {
-    // Use Cloud SQL configuration
+  }
+  // Priority 2: Cloud SQL with direct host (production/staging with IP-based connection)
+  else if (process.env.CLOUD_SQL_HOST && process.env.CLOUD_SQL_PASSWORD) {
+    console.log('📍 Using CLOUD SQL (Direct Host) configuration');
+
+    // Environment-aware database selection with fallback
+    const isProduction = process.env.VERCEL_ENV === 'production' ||
+                         process.env.NODE_ENV === 'production';
+
+    let database;
+    if (isProduction) {
+      // Production: prefer PRIMARY, fallback to STAGING for backward compatibility
+      database = process.env.CLOUD_SQL_DB_PRIMARY || process.env.CLOUD_SQL_DB_STAGING;
+      console.log(`   Environment: PRODUCTION`);
+    } else {
+      // Preview/Development: prefer STAGING, fallback to PRIMARY
+      database = process.env.CLOUD_SQL_DB_STAGING || process.env.CLOUD_SQL_DB_PRIMARY;
+      console.log(`   Environment: PREVIEW/STAGING`);
+    }
+
+    if (!database) {
+      throw new Error('Either CLOUD_SQL_DB_PRIMARY or CLOUD_SQL_DB_STAGING environment variable is required');
+    }
+
+    console.log(`   Target Database: ${database}`);
+
     config = {
-      host: process.env.CLOUD_SQL_HOST || '34.69.40.212',
+      host: process.env.CLOUD_SQL_HOST,
       port: parseInt(process.env.CLOUD_SQL_PORT || '3306'),
-      user: process.env.CLOUD_SQL_USERNAME || 'mcp-reader',
+      user: process.env.CLOUD_SQL_USERNAME || 'mcp_user',
       password: process.env.CLOUD_SQL_PASSWORD,
-      database: process.env.CLOUD_SQL_DATABASE_NAME || 'seoptinalytics-staging',
+      database: database,
       connectTimeout: MIGRATION_CONFIG.connectionTimeout,
-      acquireTimeout: MIGRATION_CONFIG.connectionTimeout,
-      timeout: MIGRATION_CONFIG.queryTimeout,
-      charset: 'utf8mb4'
+      charset: 'utf8mb4',
+      ssl: {
+        rejectUnauthorized: false // Cloud SQL requires SSL but uses self-signed certs
+      }
     };
 
-    if (!config.password) {
-      throw new Error('CLOUD_SQL_PASSWORD environment variable is required');
+    // Add SSL certificate paths if provided
+    if (process.env.CLOUD_SQL_CA_CERT) {
+      config.ssl.ca = process.env.CLOUD_SQL_CA_CERT;
     }
   }
+  // Priority 3: Cloud SQL Connector (serverless environments like Vercel)
+  else if (process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME) {
+    console.log('📍 Using CLOUD SQL CONNECTOR configuration');
+    console.warn('⚠️ Cloud SQL Connector requires @google-cloud/cloud-sql-connector package');
+    console.warn('⚠️ This migration script uses direct connection - ensure CLOUD_SQL_HOST is set');
+    throw new Error('Cloud SQL Connector not supported in migration script. Please set CLOUD_SQL_HOST for direct connection.');
+  }
+  // No valid configuration found
+  else {
+    console.error('❌ No database configuration found');
+    console.error('Please set one of the following:');
+    console.error('  - MYSQL_HOST + MYSQL_PASSWORD (local development)');
+    console.error('  - CLOUD_SQL_HOST + CLOUD_SQL_PASSWORD (cloud direct)');
+    throw new Error('No database configuration available. Check environment variables.');
+  }
+
+  // Log sanitized connection info
+  console.log('🔗 Connection details:');
+  console.log(`   Host: ${config.host}:${config.port}`);
+  console.log(`   User: ${config.user}`);
+  console.log(`   Database: ${config.database}`);
+  console.log(`   SSL: ${config.ssl ? 'enabled' : 'disabled'}`);
 
   return config;
 }
