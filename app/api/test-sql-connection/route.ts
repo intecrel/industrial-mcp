@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
 
     log(`📍 Environment: NODE_ENV=${process.env.NODE_ENV}, VERCEL_ENV=${process.env.VERCEL_ENV}`)
     log(`📍 Is Local: ${isLocal}, Is Production: ${isProduction}`)
+    log(`📍 CLOUD_SQL_USERNAME env var: ${process.env.CLOUD_SQL_USERNAME || 'NOT SET'}`)
 
     let connection: any = null
 
@@ -98,10 +99,13 @@ export async function GET(request: NextRequest) {
         })
         log('✅ Got connection options')
 
-        log('🔌 Creating MySQL connection...')
+        const userName = process.env.CLOUD_SQL_USERNAME || 'mcp_user'
+        const dbPassword = process.env.CLOUD_SQL_PASSWORD ? '***SET***' : '***NOT SET***'
+
+        log(`🔌 Creating MySQL connection with user: ${userName}, password: ${dbPassword}...`)
         connection = await mysql.createConnection({
           ...clientOpts,
-          user: process.env.CLOUD_SQL_USERNAME || 'mcp_user',
+          user: userName,
           password: process.env.CLOUD_SQL_PASSWORD,
           database: database
         })
