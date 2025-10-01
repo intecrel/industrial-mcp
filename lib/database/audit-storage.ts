@@ -591,41 +591,22 @@ export class AuditStorageManager {
 
       const dbManager = await getGlobalDatabaseManager()
       // Get MySQL connection explicitly (cloud_sql or mysql depending on environment)
-      const mysqlConnection = dbManager.getConnection('cloud_sql') || dbManager.getConnection('mysql')
+      const mysql = dbManager.getConnection('cloud_sql') || dbManager.getConnection('mysql')
 
-      if (!mysqlConnection) {
+      if (!mysql) {
         throw new Error('No MySQL connection available (cloud_sql or mysql)')
       }
 
       console.log('🔗 Got database connection, checking if connected...')
-      if (!mysqlConnection.isConnected) {
+      if (!mysql.isConnected) {
         console.log('🔗 Connecting to database...')
-        await mysqlConnection.connect()
+        await mysql.connect()
       }
       console.log('✅ Database connected successfully')
 
-      // Get the underlying pool to execute queries with a single connection
-      // This ensures all DDL statements are visible in the same session
-      const pool = (mysqlConnection as any).pool
-      if (!pool) {
-        throw new Error('MySQL pool not available')
-      }
-
-      console.log('🔗 Getting dedicated connection from pool for schema creation...')
-      const connection = await pool.getConnection()
-
-      try {
-        // Wrap mysql.query to use our dedicated connection
-        const mysql = {
-          query: async (sql: string, params?: any[]) => {
-            const [rows] = await connection.execute(sql, params || [])
-            return [rows]
-          },
-          isConnected: true
-        }
-
-        // Check if tables already exist
-        const { allExist, existingTables } = await this.checkTablesExist(mysql)
+      // Check if tables already exist
+      console.log('🔍 Checking if audit tables already exist...')
+      const { allExist, existingTables } = await this.checkTablesExist(mysql)
 
       if (allExist) {
         console.log('✅ All audit tables already exist, skipping schema creation')
@@ -636,6 +617,7 @@ export class AuditStorageManager {
       console.log(`📋 Missing tables: ${3 - existingTables.length}`)
 
       // Execute schema creation with enhanced error handling
+      // Note: MySQL auto-commits DDL statements, so each CREATE TABLE is immediately visible
       const statements = AUDIT_SCHEMA_SQL
         .split(/;\s*\n/) // Split only on semicolon followed by newline
         .map(stmt => stmt.trim())
@@ -705,19 +687,13 @@ export class AuditStorageManager {
       console.log('🔍 Verifying audit tables...')
       const verification = await this.checkTablesExist(mysql)
 
-        if (verification.allExist) {
-          console.log('✅ All audit tables verified successfully')
-        } else {
-          const missing = ['audit_events', 'database_audit_events', 'audit_retention_policy']
-            .filter(t => !verification.existingTables.includes(t))
-          console.warn(`⚠️ Some tables still missing: ${missing.join(', ')}`)
-          console.warn('💡 Run migration script: npm run migrate:audit or POST /api/admin/migrate-audit')
-        }
-
-      } finally {
-        // Release the dedicated connection back to the pool
-        console.log('🔌 Releasing dedicated connection back to pool...')
-        connection.release()
+      if (verification.allExist) {
+        console.log('✅ All audit tables verified successfully')
+      } else {
+        const missing = ['audit_events', 'database_audit_events', 'audit_retention_policy']
+          .filter(t => !verification.existingTables.includes(t))
+        console.warn(`⚠️ Some tables still missing: ${missing.join(', ')}`)
+        console.warn('💡 Run migration script: npm run migrate:audit or POST /api/admin/migrate-audit')
       }
 
     } catch (error) {
