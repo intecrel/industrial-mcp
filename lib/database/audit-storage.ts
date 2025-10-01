@@ -609,38 +609,20 @@ export class AuditStorageManager {
   }
 
   /**
-   * Initialize database schema (skips if tables already exist)
+   * Initialize database schema using direct connection (same as migration script)
    */
   private async initializeDatabase(): Promise<void> {
+    let connection: any = null
+
     try {
       console.log('🔧 Starting audit database initialization...')
+      console.log('📍 Using direct connection approach (same as migration script)')
 
-      const dbManager = await getGlobalDatabaseManager()
-      // Get MySQL connection explicitly (cloud_sql or mysql depending on environment)
-      const mysql = dbManager.getConnection('cloud_sql') || dbManager.getConnection('mysql')
+      // Create direct connection using same approach as migration script
+      connection = await this.createDirectConnection()
+      console.log('✅ Direct connection established')
 
-      if (!mysql) {
-        throw new Error('No MySQL connection available (cloud_sql or mysql)')
-      }
-
-      console.log('🔗 Got database connection, checking if connected...')
-      if (!mysql.isConnected) {
-        console.log('🔗 Connecting to database...')
-        await mysql.connect()
-      }
-      console.log('✅ Database connected successfully')
-
-      // Skip table existence check - just try to create with IF NOT EXISTS
-      // This avoids potential permission issues with information_schema queries
       console.log('🔨 Attempting automatic table creation (using CREATE TABLE IF NOT EXISTS)...')
-
-      // Get raw mysql2 connection/pool for direct execute() - same as migration script
-      const executor = mysql.getPool ? mysql.getPool() : null
-      if (!executor) {
-        throw new Error('No connection/pool available from MySQL connection')
-      }
-
-      console.log('🔧 Executor type:', executor.constructor?.name || 'unknown')
 
       // Execute schema creation with enhanced error handling
       // Note: MySQL auto-commits DDL statements, so each CREATE TABLE is immediately visible
@@ -667,8 +649,8 @@ export class AuditStorageManager {
           console.log(`🔄 [${i + 1}/${statements.length}] Executing ${statementType}...`)
           const startTime = Date.now()
 
-          // Use executor.execute() directly like migration script
-          await executor.execute(statement)
+          // Use connection.execute() directly like migration script
+          await connection.execute(statement)
 
           const executionTime = Date.now() - startTime
           console.log(`✅ [${i + 1}/${statements.length}] ${statementType} completed (${executionTime}ms)`)
@@ -710,18 +692,7 @@ export class AuditStorageManager {
         throw new Error(`All schema creation statements failed. First error: ${errors[0]}`)
       }
 
-      // Verify all required tables exist before declaring success
-      console.log('🔍 Verifying audit tables...')
-      const verification = await this.checkTablesExist(mysql)
-
-      if (verification.allExist) {
-        console.log('✅ All audit tables verified successfully')
-      } else {
-        const missing = ['audit_events', 'database_audit_events', 'audit_retention_policy']
-          .filter(t => !verification.existingTables.includes(t))
-        console.warn(`⚠️ Some tables still missing: ${missing.join(', ')}`)
-        console.warn('💡 Run migration script: npm run migrate:audit or POST /api/admin/migrate-audit')
-      }
+      console.log('✅ Audit database initialization complete')
 
     } catch (error) {
       console.error('❌ Failed to initialize audit database:', error)
@@ -733,7 +704,143 @@ export class AuditStorageManager {
       // Don't throw error to prevent breaking the main application
       // Audit storage will fall back to console-only mode
       console.warn('⚠️ Continuing without database audit storage (console-only mode)')
+    } finally {
+      // Close the direct connection
+      if (connection) {
+        try {
+          await connection.end()
+          console.log('🔌 Direct connection closed')
+        } catch (error) {
+          console.warn('⚠️ Failed to close direct connection:', error)
+        }
+      }
     }
+  }
+
+  /**
+   * Create direct mysql2 connection using same approach as migration script
+   */
+  private async createDirectConnection(): Promise<any> {
+    // Dynamic import to avoid issues
+    const mysql = require('mysql2/promise')
+
+    // Check if we're in local development mode
+    const isLocal = process.env.NODE_ENV !== 'production' && !process.env.VERCEL_ENV
+    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production'
+
+    console.log('🔧 Environment detection:')
+    console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'not set'}`)
+    console.log(`   VERCEL_ENV: ${process.env.VERCEL_ENV || 'not set'}`)
+    console.log(`   Is Local: ${isLocal}`)
+
+    // Priority 1: Local MySQL
+    if (isLocal && process.env.MYSQL_HOST) {
+      console.log('📍 Using LOCAL MySQL configuration')
+      return await mysql.createConnection({
+        host: process.env.MYSQL_HOST,
+        port: parseInt(process.env.MYSQL_PORT || '3306'),
+        user: process.env.MYSQL_USERNAME || 'root',
+        password: process.env.MYSQL_PASSWORD,
+        database: process.env.MYSQL_DATABASE,
+        connectTimeout: 60000,
+        charset: 'utf8mb4'
+      })
+    }
+
+    // Priority 2: Cloud SQL Connector (serverless environments like Vercel)
+    else if (process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME) {
+      console.log('📍 Using CLOUD SQL CONNECTOR configuration')
+
+      const database = isProduction
+        ? (process.env.CLOUD_SQL_DB_PRIMARY || process.env.CLOUD_SQL_DB_STAGING)
+        : (process.env.CLOUD_SQL_DB_STAGING || process.env.CLOUD_SQL_DB_PRIMARY)
+
+      console.log(`   Environment: ${isProduction ? 'PRODUCTION' : 'PREVIEW/STAGING'}`)
+      console.log(`   Target Database: ${database}`)
+      console.log(`   Instance: ${process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME}`)
+
+      const { Connector } = require('@google-cloud/cloud-sql-connector')
+      const { writeFileSync, unlinkSync } = require('fs')
+      const { tmpdir } = require('os')
+      const path = require('path')
+
+      let tempCredentialsFile: string | null = null
+      const originalGoogleCredentials = process.env.GOOGLE_APPLICATION_CREDENTIALS
+
+      // Check if GOOGLE_APPLICATION_CREDENTIALS is inline JSON or file path
+      const googleCreds = process.env.GOOGLE_APPLICATION_CREDENTIALS
+      if (googleCreds && googleCreds.trim().startsWith('{')) {
+        // Inline JSON credentials - write to temp file
+        const credentials = JSON.parse(googleCreds)
+        console.log(`   Using service account ${credentials.client_email} from project ${credentials.project_id}`)
+
+        const tempPath = path.join(tmpdir(), `gcp-credentials-audit-${Date.now()}.json`)
+        writeFileSync(tempPath, googleCreds)
+        tempCredentialsFile = tempPath
+        process.env.GOOGLE_APPLICATION_CREDENTIALS = tempPath
+        console.log(`   Wrote credentials to temporary file`)
+      }
+
+      try {
+        const connector = new Connector()
+        const clientOpts = await connector.getOptions({
+          instanceConnectionName: process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME
+        })
+
+        const connection = await mysql.createConnection({
+          ...clientOpts,
+          user: process.env.CLOUD_SQL_USERNAME || 'mcp_user',
+          password: process.env.CLOUD_SQL_PASSWORD,
+          database: database
+        })
+
+        console.log(`✅ Connected via Cloud SQL Connector: ${process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME}/${database}`)
+        return connection
+
+      } finally {
+        // Restore original credentials environment variable
+        if (originalGoogleCredentials) {
+          process.env.GOOGLE_APPLICATION_CREDENTIALS = originalGoogleCredentials
+        } else {
+          delete process.env.GOOGLE_APPLICATION_CREDENTIALS
+        }
+
+        // Clean up temp file if created
+        if (tempCredentialsFile) {
+          try {
+            unlinkSync(tempCredentialsFile)
+          } catch (error) {
+            // Ignore cleanup errors
+          }
+        }
+      }
+    }
+
+    // Priority 3: Cloud SQL Direct Host
+    else if (process.env.CLOUD_SQL_HOST) {
+      console.log('📍 Using CLOUD SQL (Direct Host) configuration')
+
+      const database = isProduction
+        ? (process.env.CLOUD_SQL_DB_PRIMARY || process.env.CLOUD_SQL_DB_STAGING)
+        : (process.env.CLOUD_SQL_DB_STAGING || process.env.CLOUD_SQL_DB_PRIMARY)
+
+      console.log(`   Target Database: ${database}`)
+
+      return await mysql.createConnection({
+        host: process.env.CLOUD_SQL_HOST,
+        port: parseInt(process.env.CLOUD_SQL_PORT || '3306'),
+        user: process.env.CLOUD_SQL_USERNAME || 'mcp_user',
+        password: process.env.CLOUD_SQL_PASSWORD,
+        database: database,
+        connectTimeout: 60000,
+        charset: 'utf8mb4',
+        ssl: {
+          rejectUnauthorized: false
+        }
+      })
+    }
+
+    throw new Error('No database configuration available for audit storage')
   }
 
   /**
