@@ -136,7 +136,45 @@ function getDatabaseConfig() {
       throw new Error('MYSQL_PASSWORD environment variable is required for local development');
     }
   }
-  // Priority 2: Cloud SQL with direct host (production/staging with IP-based connection)
+  // Priority 2: Cloud SQL Connector (serverless environments like Vercel)
+  else if (process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME) {
+    console.log('📍 Using CLOUD SQL CONNECTOR configuration');
+
+    // Environment-aware database selection with fallback
+    const isProduction = process.env.VERCEL_ENV === 'production' ||
+                         process.env.NODE_ENV === 'production';
+
+    let database;
+    if (isProduction) {
+      // Production: prefer PRIMARY, fallback to STAGING for backward compatibility
+      database = process.env.CLOUD_SQL_DB_PRIMARY || process.env.CLOUD_SQL_DB_STAGING;
+      console.log(`   Environment: PRODUCTION`);
+    } else {
+      // Preview/Development: prefer STAGING, fallback to PRIMARY
+      database = process.env.CLOUD_SQL_DB_STAGING || process.env.CLOUD_SQL_DB_PRIMARY;
+      console.log(`   Environment: PREVIEW/STAGING`);
+    }
+
+    if (!database) {
+      throw new Error('Either CLOUD_SQL_DB_PRIMARY or CLOUD_SQL_DB_STAGING environment variable is required');
+    }
+
+    console.log(`   Target Database: ${database}`);
+    console.log(`   Instance: ${process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME}`);
+
+    config = {
+      instanceConnectionName: process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME,
+      user: process.env.CLOUD_SQL_USERNAME || 'mcp_user',
+      password: process.env.CLOUD_SQL_PASSWORD,
+      database: database,
+      connectTimeout: MIGRATION_CONFIG.connectionTimeout,
+      charset: 'utf8mb4'
+    };
+
+    // Mark this as a connector config so we handle it differently
+    config.useConnector = true;
+  }
+  // Priority 3: Cloud SQL with direct host (fallback for environments with authorized IPs)
   else if (process.env.CLOUD_SQL_HOST && process.env.CLOUD_SQL_PASSWORD) {
     console.log('📍 Using CLOUD SQL (Direct Host) configuration');
 
@@ -179,59 +217,29 @@ function getDatabaseConfig() {
       config.ssl.ca = process.env.CLOUD_SQL_CA_CERT;
     }
   }
-  // Priority 3: Cloud SQL Connector (serverless environments like Vercel)
-  else if (process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME) {
-    console.log('📍 Using CLOUD SQL CONNECTOR configuration');
-
-    // Environment-aware database selection with fallback
-    const isProduction = process.env.VERCEL_ENV === 'production' ||
-                         process.env.NODE_ENV === 'production';
-
-    let database;
-    if (isProduction) {
-      // Production: prefer PRIMARY, fallback to STAGING for backward compatibility
-      database = process.env.CLOUD_SQL_DB_PRIMARY || process.env.CLOUD_SQL_DB_STAGING;
-      console.log(`   Environment: PRODUCTION`);
-    } else {
-      // Preview/Development: prefer STAGING, fallback to PRIMARY
-      database = process.env.CLOUD_SQL_DB_STAGING || process.env.CLOUD_SQL_DB_PRIMARY;
-      console.log(`   Environment: PREVIEW/STAGING`);
-    }
-
-    if (!database) {
-      throw new Error('Either CLOUD_SQL_DB_PRIMARY or CLOUD_SQL_DB_STAGING environment variable is required');
-    }
-
-    console.log(`   Target Database: ${database}`);
-    console.log(`   Instance: ${process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME}`);
-
-    config = {
-      instanceConnectionName: process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME,
-      user: process.env.CLOUD_SQL_USERNAME || 'mcp_user',
-      password: process.env.CLOUD_SQL_PASSWORD,
-      database: database,
-      connectTimeout: MIGRATION_CONFIG.connectionTimeout,
-      charset: 'utf8mb4'
-    };
-
-    // Mark this as a connector config so we handle it differently
-    config.useConnector = true;
-  }
   // No valid configuration found
   else {
     console.error('❌ No database configuration found');
     console.error('Please set one of the following:');
     console.error('  - MYSQL_HOST + MYSQL_PASSWORD (local development)');
-    console.error('  - CLOUD_SQL_HOST + CLOUD_SQL_PASSWORD (cloud direct)');
+    console.error('  - CLOUD_SQL_INSTANCE_CONNECTION_NAME + CLOUD_SQL_PASSWORD (serverless/Vercel)');
+    console.error('  - CLOUD_SQL_HOST + CLOUD_SQL_PASSWORD (cloud direct with authorized IPs)');
     throw new Error('No database configuration available. Check environment variables.');
   }
 
   // Log sanitized connection info
   console.log('🔗 Connection details:');
-  console.log(`   Host: ${config.host}:${config.port}`);
-  console.log(`   User: ${config.user}`);
-  console.log(`   Database: ${config.database}`);
-  console.log(`   SSL: ${config.ssl ? 'enabled' : 'disabled'}`);
+  if (config.useConnector) {
+    console.log(`   Instance: ${config.instanceConnectionName}`);
+    console.log(`   User: ${config.user}`);
+    console.log(`   Database: ${config.database}`);
+    console.log(`   Connection: Cloud SQL Connector (secure socket)`);
+  } else {
+    console.log(`   Host: ${config.host}:${config.port}`);
+    console.log(`   User: ${config.user}`);
+    console.log(`   Database: ${config.database}`);
+    console.log(`   SSL: ${config.ssl ? 'enabled' : 'disabled'}`);
+  }
 
   return config;
 }
