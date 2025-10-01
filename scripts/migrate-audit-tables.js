@@ -182,9 +182,40 @@ function getDatabaseConfig() {
   // Priority 3: Cloud SQL Connector (serverless environments like Vercel)
   else if (process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME) {
     console.log('📍 Using CLOUD SQL CONNECTOR configuration');
-    console.warn('⚠️ Cloud SQL Connector requires @google-cloud/cloud-sql-connector package');
-    console.warn('⚠️ This migration script uses direct connection - ensure CLOUD_SQL_HOST is set');
-    throw new Error('Cloud SQL Connector not supported in migration script. Please set CLOUD_SQL_HOST for direct connection.');
+
+    // Environment-aware database selection with fallback
+    const isProduction = process.env.VERCEL_ENV === 'production' ||
+                         process.env.NODE_ENV === 'production';
+
+    let database;
+    if (isProduction) {
+      // Production: prefer PRIMARY, fallback to STAGING for backward compatibility
+      database = process.env.CLOUD_SQL_DB_PRIMARY || process.env.CLOUD_SQL_DB_STAGING;
+      console.log(`   Environment: PRODUCTION`);
+    } else {
+      // Preview/Development: prefer STAGING, fallback to PRIMARY
+      database = process.env.CLOUD_SQL_DB_STAGING || process.env.CLOUD_SQL_DB_PRIMARY;
+      console.log(`   Environment: PREVIEW/STAGING`);
+    }
+
+    if (!database) {
+      throw new Error('Either CLOUD_SQL_DB_PRIMARY or CLOUD_SQL_DB_STAGING environment variable is required');
+    }
+
+    console.log(`   Target Database: ${database}`);
+    console.log(`   Instance: ${process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME}`);
+
+    config = {
+      instanceConnectionName: process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME,
+      user: process.env.CLOUD_SQL_USERNAME || 'mcp_user',
+      password: process.env.CLOUD_SQL_PASSWORD,
+      database: database,
+      connectTimeout: MIGRATION_CONFIG.connectionTimeout,
+      charset: 'utf8mb4'
+    };
+
+    // Mark this as a connector config so we handle it differently
+    config.useConnector = true;
   }
   // No valid configuration found
   else {
@@ -215,11 +246,34 @@ async function createConnection() {
     try {
       console.log(`🔗 Attempting database connection (attempt ${attempt}/${MIGRATION_CONFIG.maxRetries})...`);
 
-      const connection = await mysql.createConnection(config);
+      let connection;
+
+      // Use Cloud SQL Connector for serverless environments
+      if (config.useConnector) {
+        const { Connector } = require('@google-cloud/cloud-sql-connector');
+        const connector = new Connector();
+
+        const clientOpts = await connector.getOptions({
+          instanceConnectionName: config.instanceConnectionName,
+          authType: 'PASSWORD'
+        });
+
+        connection = await mysql.createConnection({
+          ...clientOpts,
+          user: config.user,
+          password: config.password,
+          database: config.database
+        });
+
+        console.log(`✅ Connected via Cloud SQL Connector: ${config.instanceConnectionName}/${config.database}`);
+      } else {
+        // Direct connection for local/cloud SQL with host
+        connection = await mysql.createConnection(config);
+        console.log(`✅ Connected to MySQL database: ${config.host}:${config.port}/${config.database}`);
+      }
 
       // Test connection
       await connection.execute('SELECT 1');
-      console.log(`✅ Connected to MySQL database: ${config.host}:${config.port}/${config.database}`);
 
       return connection;
     } catch (error) {

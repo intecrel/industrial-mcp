@@ -84,8 +84,22 @@ export async function GET(request: NextRequest) {
         connectTimeout: 30000
       }
     }
-    // Priority 2: Cloud SQL
-    else {
+    // Priority 2: Cloud SQL Connector (Vercel/Serverless)
+    else if (process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME) {
+      const database = isProduction
+        ? (process.env.CLOUD_SQL_DB_PRIMARY || process.env.CLOUD_SQL_DB_STAGING)
+        : (process.env.CLOUD_SQL_DB_STAGING || process.env.CLOUD_SQL_DB_PRIMARY)
+
+      config = {
+        instanceConnectionName: process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME,
+        user: process.env.CLOUD_SQL_USERNAME || 'mcp_user',
+        password: process.env.CLOUD_SQL_PASSWORD,
+        database: database,
+        useConnector: true
+      }
+    }
+    // Priority 3: Cloud SQL Direct (with host)
+    else if (process.env.CLOUD_SQL_HOST) {
       const database = isProduction
         ? (process.env.CLOUD_SQL_DB_PRIMARY || process.env.CLOUD_SQL_DB_STAGING)
         : (process.env.CLOUD_SQL_DB_STAGING || process.env.CLOUD_SQL_DB_PRIMARY)
@@ -100,19 +114,41 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (!config.host || !config.password || !config.database) {
+    if (!config.password || !config.database) {
       return NextResponse.json(
         {
           success: false,
           error: 'Configuration error',
-          message: 'Missing required database configuration. Local: MYSQL_HOST/PASSWORD/DATABASE, Cloud: CLOUD_SQL_HOST/PASSWORD and CLOUD_SQL_DB_PRIMARY or CLOUD_SQL_DB_STAGING',
+          message: 'Missing required database configuration. Local: MYSQL_HOST/PASSWORD/DATABASE, Cloud: CLOUD_SQL_INSTANCE_CONNECTION_NAME or CLOUD_SQL_HOST, plus CLOUD_SQL_PASSWORD and CLOUD_SQL_DB_PRIMARY or CLOUD_SQL_DB_STAGING',
           timestamp: new Date().toISOString()
         },
         { status: 500 }
       )
     }
 
-    const connection = await mysql.createConnection(config)
+    let connection
+
+    // Use Cloud SQL Connector for serverless environments
+    if (config.useConnector) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Connector } = require('@google-cloud/cloud-sql-connector')
+      const connector = new Connector()
+
+      const clientOpts = await connector.getOptions({
+        instanceConnectionName: config.instanceConnectionName,
+        authType: 'PASSWORD'
+      })
+
+      connection = await mysql.createConnection({
+        ...clientOpts,
+        user: config.user,
+        password: config.password,
+        database: config.database
+      })
+    } else {
+      // Direct connection
+      connection = await mysql.createConnection(config)
+    }
 
     try {
       const [rows] = await connection.execute(`
