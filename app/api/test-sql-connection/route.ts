@@ -164,38 +164,50 @@ export async function GET(request: NextRequest) {
     const [rows] = await connection.execute('SELECT 1 as test')
     log(`✅ Test query successful: ${JSON.stringify(rows)}`)
 
-    // Create test table
-    const testTableName = `test_audit_${Date.now()}`
-    log(`📋 Creating test table: ${testTableName}...`)
+    // Create actual audit_events table (matching migration script)
+    log(`📋 Creating audit_events table (same as migration script)...`)
 
-    const createTableSQL = `
-      CREATE TABLE IF NOT EXISTS ${testTableName} (
+    const createAuditEventsSQL = `
+      CREATE TABLE IF NOT EXISTS audit_events (
         id BIGINT PRIMARY KEY AUTO_INCREMENT,
-        test_value VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+        event_type VARCHAR(50) NOT NULL,
+        user_id VARCHAR(255),
+        resource_type VARCHAR(100),
+        resource_id VARCHAR(255),
+        action VARCHAR(100) NOT NULL,
+        details JSON,
+        ip_address VARCHAR(45),
+        user_agent TEXT,
+        status VARCHAR(20) DEFAULT 'success',
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user_id (user_id),
+        INDEX idx_resource (resource_type, resource_id),
+        INDEX idx_created_at (created_at),
+        INDEX idx_event_type (event_type)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `
 
-    await connection.execute(createTableSQL)
-    log(`✅ Test table ${testTableName} created successfully`)
+    await connection.execute(createAuditEventsSQL)
+    log(`✅ audit_events table created successfully`)
 
     // Insert test data
-    log('📝 Inserting test data...')
+    log('📝 Inserting test audit event...')
     await connection.execute(
-      `INSERT INTO ${testTableName} (test_value) VALUES (?)`,
-      ['test-value-123']
+      `INSERT INTO audit_events (event_type, action, details) VALUES (?, ?, ?)`,
+      ['test', 'test_connection', JSON.stringify({ test: true, timestamp: Date.now() })]
     )
-    log('✅ Test data inserted')
+    log('✅ Test audit event inserted')
 
     // Query test data
-    log('📊 Querying test data...')
-    const [testRows] = await connection.execute(`SELECT * FROM ${testTableName}`)
+    log('📊 Querying audit_events...')
+    const [testRows] = await connection.execute(`SELECT * FROM audit_events ORDER BY id DESC LIMIT 1`)
     log(`✅ Test data retrieved: ${JSON.stringify(testRows)}`)
 
-    // Clean up test table
-    log(`🗑️ Dropping test table ${testTableName}...`)
-    await connection.execute(`DROP TABLE ${testTableName}`)
-    log('✅ Test table dropped')
+    // Clean up test data (but keep table)
+    log(`🗑️ Cleaning up test data...`)
+    await connection.execute(`DELETE FROM audit_events WHERE event_type = 'test'`)
+    log('✅ Test data cleaned up (table preserved)')
 
     // Close connection
     log('🔌 Closing connection...')
