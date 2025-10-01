@@ -562,17 +562,24 @@ export class AuditStorageManager {
   private async checkTablesExist(mysql: any): Promise<{ allExist: boolean; existingTables: string[] }> {
     try {
       console.log('🔍 Querying information_schema for audit tables...')
-      const result = await mysql.query(`
+
+      // Get raw mysql2 pool for direct execute() - same as migration script
+      const pool = mysql.getPool ? mysql.getPool() : null
+      if (!pool) {
+        console.error('❌ No pool available from MySQL connection')
+        return { allExist: false, existingTables: [] }
+      }
+
+      // Use pool.execute() directly like migration script - returns [rows, fields]
+      const [rows] = await pool.execute(`
         SELECT table_name
         FROM information_schema.tables
         WHERE table_schema = DATABASE() AND table_name LIKE 'audit%'
         ORDER BY table_name
       `)
 
-      console.log('📊 Query result:', JSON.stringify(result, null, 2))
+      console.log('📊 Query completed, rows:', rows.length)
 
-      // Handle QueryResult format from mysql-connection.ts
-      const rows = result.data || result[0] || []
       const existingTables = rows.map((row: any) => row.table_name || row.TABLE_NAME) || []
       const expectedTables = ['audit_events', 'database_audit_events', 'audit_retention_policy']
       const allExist = expectedTables.every(table => existingTables.includes(table))
@@ -583,6 +590,7 @@ export class AuditStorageManager {
       return { allExist, existingTables }
     } catch (error) {
       console.error('❌ Failed to check existing tables:', error)
+      // Assume tables don't exist on error
       return { allExist: false, existingTables: [] }
     }
   }
@@ -621,6 +629,12 @@ export class AuditStorageManager {
       console.log('🔨 Some audit tables missing, attempting automatic creation...')
       console.log(`📋 Missing tables: ${3 - existingTables.length}`)
 
+      // Get raw mysql2 pool for direct execute() - same as migration script
+      const pool = mysql.getPool ? mysql.getPool() : null
+      if (!pool) {
+        throw new Error('No pool available from MySQL connection')
+      }
+
       // Execute schema creation with enhanced error handling
       // Note: MySQL auto-commits DDL statements, so each CREATE TABLE is immediately visible
       const statements = AUDIT_SCHEMA_SQL
@@ -646,7 +660,8 @@ export class AuditStorageManager {
           console.log(`🔄 [${i + 1}/${statements.length}] Executing ${statementType}...`)
           const startTime = Date.now()
 
-          await mysql.query(statement)
+          // Use pool.execute() directly like migration script
+          await pool.execute(statement)
 
           const executionTime = Date.now() - startTime
           console.log(`✅ [${i + 1}/${statements.length}] ${statementType} completed (${executionTime}ms)`)
