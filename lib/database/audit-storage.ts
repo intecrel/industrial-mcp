@@ -337,7 +337,8 @@ export class AuditStorageManager {
     await this.ensureDatabaseInitialized()
 
     const dbManager = await getGlobalDatabaseManager()
-    const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
+    // Get MySQL connection explicitly (cloud_sql or mysql depending on environment)
+    const mysql = dbManager.getConnection('cloud_sql') || dbManager.getConnection('mysql')
 
     if (!mysql.isConnected) {
       await mysql.connect()
@@ -589,7 +590,12 @@ export class AuditStorageManager {
       console.log('🔧 Starting audit database initialization...')
 
       const dbManager = await getGlobalDatabaseManager()
-      const mysql = dbManager.getConnection() // Use default connection (environment-based MySQL)
+      // Get MySQL connection explicitly (cloud_sql or mysql depending on environment)
+      const mysql = dbManager.getConnection('cloud_sql') || dbManager.getConnection('mysql')
+
+      if (!mysql) {
+        throw new Error('No MySQL connection available (cloud_sql or mysql)')
+      }
 
       console.log('🔗 Got database connection, checking if connected...')
       if (!mysql.isConnected) {
@@ -603,12 +609,11 @@ export class AuditStorageManager {
 
       if (allExist) {
         console.log('✅ All audit tables already exist, skipping schema creation')
-        console.log('💡 Tables were likely created by migration script during deployment')
         return
       }
 
-      console.log('🔨 Some audit tables missing, attempting creation...')
-      console.log('💡 Note: Consider running migration script: npm run migrate:audit')
+      console.log('🔨 Some audit tables missing, attempting automatic creation...')
+      console.log(`📋 Missing tables: ${3 - existingTables.length}`)
 
       // Execute schema creation with enhanced error handling
       const statements = AUDIT_SCHEMA_SQL
@@ -617,45 +622,84 @@ export class AuditStorageManager {
         .filter(stmt => stmt.length > 0);
       console.log(`📝 Executing ${statements.length} SQL statements...`)
 
+      let successCount = 0
+      let skipCount = 0
+      const errors: string[] = []
+
       for (let i = 0; i < statements.length; i++) {
         const statement = statements[i].trim()
-        if (statement) {
-          try {
-            // Print the full statement for debugging
-            console.log(`🔄 Executing statement ${i + 1}/${statements.length}:\n${statement}\n---`)
-            const startTime = Date.now()
-            const result = await mysql.query(statement)
-            const executionTime = Date.now() - startTime
-            console.log(`✅ Statement ${i + 1} executed successfully (${executionTime}ms)`)
-          } catch (statementError: any) {
-            console.error(`❌ Failed to execute statement ${i + 1}:`, statementError)
-            console.error(`📝 Statement was:\n${statement}\n---`)
+        if (!statement) continue
 
-            // For CREATE TABLE statements, check if the error is just a permission issue
-            if (statement.includes('CREATE TABLE') &&
-                (statementError.message.includes('denied') || statementError.message.includes('permission'))) {
-              console.warn('⚠️ CREATE TABLE failed due to permissions - this is expected in some environments')
-              console.warn('💡 Run migration script separately: npm run migrate:audit')
+        try {
+          // Log statement type for better tracking
+          const isCreateTable = statement.includes('CREATE TABLE')
+          const isInsert = statement.includes('INSERT')
+          const statementType = isCreateTable ? 'CREATE TABLE' : isInsert ? 'INSERT' : 'OTHER'
+
+          console.log(`🔄 [${i + 1}/${statements.length}] Executing ${statementType}...`)
+          const startTime = Date.now()
+
+          await mysql.query(statement)
+
+          const executionTime = Date.now() - startTime
+          console.log(`✅ [${i + 1}/${statements.length}] ${statementType} completed (${executionTime}ms)`)
+          successCount++
+
+        } catch (statementError: any) {
+          const errorMsg = statementError.message || String(statementError)
+          console.error(`❌ [${i + 1}/${statements.length}] Failed:`, errorMsg)
+
+          // Check for specific error types
+          if (statement.includes('CREATE TABLE')) {
+            if (errorMsg.includes('already exists') || errorMsg.includes('Duplicate')) {
+              console.log(`ℹ️ Table already exists, skipping...`)
+              skipCount++
               continue
             }
-
-            throw statementError // rethrow for other errors
+            if (errorMsg.includes('denied') || errorMsg.includes('permission')) {
+              console.warn('⚠️ CREATE TABLE failed due to permissions')
+              errors.push(`Permission denied for CREATE TABLE`)
+              continue
+            }
           }
+
+          if (statement.includes('INSERT IGNORE')) {
+            console.log(`ℹ️ INSERT IGNORE failed (may already exist), continuing...`)
+            skipCount++
+            continue
+          }
+
+          // Log error but continue with other statements
+          errors.push(`Statement ${i + 1}: ${errorMsg}`)
+          console.error(`📝 Failed statement preview: ${statement.substring(0, 100)}...`)
         }
       }
 
-      console.log(`🎯 Schema creation completed`)
+      console.log(`📊 Schema creation summary: ${successCount} succeeded, ${skipCount} skipped, ${errors.length} failed`)
+
+      if (errors.length > 0 && successCount === 0) {
+        throw new Error(`All schema creation statements failed. First error: ${errors[0]}`)
+      }
 
       // Verify all required tables exist before declaring success
-      console.log('🔍 Verifying audit tables were created successfully...')
-      await this.verifyTablesExist(mysql)
+      console.log('🔍 Verifying audit tables...')
+      const verification = await this.checkTablesExist(mysql)
 
-      console.log('✅ Audit database schema initialized successfully')
+      if (verification.allExist) {
+        console.log('✅ All audit tables verified successfully')
+      } else {
+        const missing = ['audit_events', 'database_audit_events', 'audit_retention_policy']
+          .filter(t => !verification.existingTables.includes(t))
+        console.warn(`⚠️ Some tables still missing: ${missing.join(', ')}`)
+        console.warn('💡 Run migration script: npm run migrate:audit or POST /api/admin/migrate-audit')
+      }
 
     } catch (error) {
       console.error('❌ Failed to initialize audit database:', error)
-      console.warn('💡 Consider running migration script manually: npm run migrate:audit')
-      console.warn('💡 Or use API endpoint: POST /api/admin/migrate-audit')
+      console.warn('💡 Fallback options:')
+      console.warn('   1. Run migration script: npm run migrate:audit')
+      console.warn('   2. Use API endpoint: POST /api/admin/migrate-audit')
+      console.warn('   3. Check database permissions and connectivity')
 
       // Don't throw error to prevent breaking the main application
       // Audit storage will fall back to console-only mode
