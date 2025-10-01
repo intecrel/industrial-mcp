@@ -563,22 +563,34 @@ export class AuditStorageManager {
     try {
       console.log('🔍 Querying information_schema for audit tables...')
 
-      // Get raw mysql2 pool for direct execute() - same as migration script
-      const pool = mysql.getPool ? mysql.getPool() : null
-      if (!pool) {
-        console.error('❌ No pool available from MySQL connection')
+      // Get raw mysql2 connection/pool for direct execute() - same as migration script
+      const executor = mysql.getPool ? mysql.getPool() : null
+      if (!executor) {
+        console.error('❌ No connection/pool available from MySQL connection')
         return { allExist: false, existingTables: [] }
       }
 
-      // Use pool.execute() directly like migration script - returns [rows, fields]
-      const [rows] = await pool.execute(`
+      console.log('🔍 Executor type:', executor.constructor?.name || 'unknown')
+      console.log('🔍 Starting query execution...')
+
+      // Use execute() directly like migration script - returns [rows, fields]
+      // Add timeout to prevent hanging
+      const queryPromise = executor.execute(`
         SELECT table_name
         FROM information_schema.tables
         WHERE table_schema = DATABASE() AND table_name LIKE 'audit%'
         ORDER BY table_name
       `)
 
-      console.log('📊 Query completed, rows:', rows.length)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Query timeout after 15 seconds')), 15000)
+      )
+
+      const result = await Promise.race([queryPromise, timeoutPromise])
+      console.log('📊 Query completed successfully')
+
+      const rows = result[0] || []
+      console.log('📊 Rows found:', rows.length)
 
       const existingTables = rows.map((row: any) => row.table_name || row.TABLE_NAME) || []
       const expectedTables = ['audit_events', 'database_audit_events', 'audit_retention_policy']
@@ -590,7 +602,8 @@ export class AuditStorageManager {
       return { allExist, existingTables }
     } catch (error) {
       console.error('❌ Failed to check existing tables:', error)
-      // Assume tables don't exist on error
+      console.error('❌ Error details:', error instanceof Error ? error.message : String(error))
+      // Assume tables don't exist on error - will attempt to create them
       return { allExist: false, existingTables: [] }
     }
   }
