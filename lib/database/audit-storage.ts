@@ -561,6 +561,7 @@ export class AuditStorageManager {
    */
   private async checkTablesExist(mysql: any): Promise<{ allExist: boolean; existingTables: string[] }> {
     try {
+      console.log('🔍 Querying information_schema for audit tables...')
       const result = await mysql.query(`
         SELECT table_name
         FROM information_schema.tables
@@ -568,7 +569,11 @@ export class AuditStorageManager {
         ORDER BY table_name
       `)
 
-      const existingTables = result[0]?.map((row: any) => row.table_name) || []
+      console.log('📊 Query result:', JSON.stringify(result, null, 2))
+
+      // Handle QueryResult format from mysql-connection.ts
+      const rows = result.data || result[0] || []
+      const existingTables = rows.map((row: any) => row.table_name || row.TABLE_NAME) || []
       const expectedTables = ['audit_events', 'database_audit_events', 'audit_retention_policy']
       const allExist = expectedTables.every(table => existingTables.includes(table))
 
