@@ -251,21 +251,64 @@ async function createConnection() {
       // Use Cloud SQL Connector for serverless environments
       if (config.useConnector) {
         const { Connector } = require('@google-cloud/cloud-sql-connector');
-        const connector = new Connector();
+        const { writeFileSync, unlinkSync } = require('fs');
+        const { tmpdir } = require('os');
+        const path = require('path');
 
-        const clientOpts = await connector.getOptions({
-          instanceConnectionName: config.instanceConnectionName,
-          authType: 'PASSWORD'
-        });
+        let tempCredentialsFile = null;
+        const originalGoogleCredentials = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
-        connection = await mysql.createConnection({
-          ...clientOpts,
-          user: config.user,
-          password: config.password,
-          database: config.database
-        });
+        // Check if GOOGLE_APPLICATION_CREDENTIALS is inline JSON or file path
+        const googleCreds = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+        if (googleCreds && googleCreds.trim().startsWith('{')) {
+          // Inline JSON credentials - write to temp file
+          try {
+            const credentials = JSON.parse(googleCreds);
+            console.log(`   Using service account ${credentials.client_email} from project ${credentials.project_id}`);
 
-        console.log(`✅ Connected via Cloud SQL Connector: ${config.instanceConnectionName}/${config.database}`);
+            // Write to temporary file
+            const tempPath = path.join(tmpdir(), `gcp-credentials-${Date.now()}.json`);
+            writeFileSync(tempPath, googleCreds);
+            tempCredentialsFile = tempPath;
+            process.env.GOOGLE_APPLICATION_CREDENTIALS = tempPath;
+
+            console.log(`   Wrote credentials to temporary file`);
+          } catch (error) {
+            console.warn(`   Failed to parse inline credentials: ${error.message}`);
+          }
+        }
+
+        try {
+          const connector = new Connector();
+          const clientOpts = await connector.getOptions({
+            instanceConnectionName: config.instanceConnectionName
+          });
+
+          connection = await mysql.createConnection({
+            ...clientOpts,
+            user: config.user,
+            password: config.password,
+            database: config.database
+          });
+
+          console.log(`✅ Connected via Cloud SQL Connector: ${config.instanceConnectionName}/${config.database}`);
+        } finally {
+          // Restore original credentials environment variable
+          if (originalGoogleCredentials) {
+            process.env.GOOGLE_APPLICATION_CREDENTIALS = originalGoogleCredentials;
+          } else {
+            delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+          }
+
+          // Clean up temp file if created
+          if (tempCredentialsFile) {
+            try {
+              unlinkSync(tempCredentialsFile);
+            } catch (error) {
+              // Ignore cleanup errors
+            }
+          }
+        }
       } else {
         // Direct connection for local/cloud SQL with host
         connection = await mysql.createConnection(config);

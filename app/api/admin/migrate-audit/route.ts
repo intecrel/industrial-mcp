@@ -132,19 +132,62 @@ export async function GET(request: NextRequest) {
     if (config.useConnector) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { Connector } = require('@google-cloud/cloud-sql-connector')
-      const connector = new Connector()
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { writeFileSync, unlinkSync } = require('fs')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { tmpdir } = require('os')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const path = require('path')
 
-      const clientOpts = await connector.getOptions({
-        instanceConnectionName: config.instanceConnectionName,
-        authType: 'PASSWORD'
-      })
+      let tempCredentialsFile: string | null = null
+      const originalGoogleCredentials = process.env.GOOGLE_APPLICATION_CREDENTIALS
 
-      connection = await mysql.createConnection({
-        ...clientOpts,
-        user: config.user,
-        password: config.password,
-        database: config.database
-      })
+      // Check if GOOGLE_APPLICATION_CREDENTIALS is inline JSON or file path
+      const googleCreds = process.env.GOOGLE_APPLICATION_CREDENTIALS
+      if (googleCreds && googleCreds.trim().startsWith('{')) {
+        // Inline JSON credentials - write to temp file
+        try {
+          const credentials = JSON.parse(googleCreds)
+
+          // Write to temporary file
+          const tempPath = path.join(tmpdir(), `gcp-credentials-${Date.now()}.json`)
+          writeFileSync(tempPath, googleCreds)
+          tempCredentialsFile = tempPath
+          process.env.GOOGLE_APPLICATION_CREDENTIALS = tempPath
+        } catch (error: any) {
+          console.warn(`Failed to parse inline credentials: ${error.message}`)
+        }
+      }
+
+      try {
+        const connector = new Connector()
+        const clientOpts = await connector.getOptions({
+          instanceConnectionName: config.instanceConnectionName
+        })
+
+        connection = await mysql.createConnection({
+          ...clientOpts,
+          user: config.user,
+          password: config.password,
+          database: config.database
+        })
+      } finally {
+        // Restore original credentials environment variable
+        if (originalGoogleCredentials) {
+          process.env.GOOGLE_APPLICATION_CREDENTIALS = originalGoogleCredentials
+        } else {
+          delete process.env.GOOGLE_APPLICATION_CREDENTIALS
+        }
+
+        // Clean up temp file if created
+        if (tempCredentialsFile) {
+          try {
+            unlinkSync(tempCredentialsFile)
+          } catch (error) {
+            // Ignore cleanup errors
+          }
+        }
+      }
     } else {
       // Direct connection
       connection = await mysql.createConnection(config)
