@@ -630,23 +630,17 @@ export class AuditStorageManager {
       }
       console.log('✅ Database connected successfully')
 
-      // Check if tables already exist
-      console.log('🔍 Checking if audit tables already exist...')
-      const { allExist, existingTables } = await this.checkTablesExist(mysql)
+      // Skip table existence check - just try to create with IF NOT EXISTS
+      // This avoids potential permission issues with information_schema queries
+      console.log('🔨 Attempting automatic table creation (using CREATE TABLE IF NOT EXISTS)...')
 
-      if (allExist) {
-        console.log('✅ All audit tables already exist, skipping schema creation')
-        return
+      // Get raw mysql2 connection/pool for direct execute() - same as migration script
+      const executor = mysql.getPool ? mysql.getPool() : null
+      if (!executor) {
+        throw new Error('No connection/pool available from MySQL connection')
       }
 
-      console.log('🔨 Some audit tables missing, attempting automatic creation...')
-      console.log(`📋 Missing tables: ${3 - existingTables.length}`)
-
-      // Get raw mysql2 pool for direct execute() - same as migration script
-      const pool = mysql.getPool ? mysql.getPool() : null
-      if (!pool) {
-        throw new Error('No pool available from MySQL connection')
-      }
+      console.log('🔧 Executor type:', executor.constructor?.name || 'unknown')
 
       // Execute schema creation with enhanced error handling
       // Note: MySQL auto-commits DDL statements, so each CREATE TABLE is immediately visible
@@ -673,8 +667,8 @@ export class AuditStorageManager {
           console.log(`🔄 [${i + 1}/${statements.length}] Executing ${statementType}...`)
           const startTime = Date.now()
 
-          // Use pool.execute() directly like migration script
-          await pool.execute(statement)
+          // Use executor.execute() directly like migration script
+          await executor.execute(statement)
 
           const executionTime = Date.now() - startTime
           console.log(`✅ [${i + 1}/${statements.length}] ${statementType} completed (${executionTime}ms)`)
