@@ -722,6 +722,7 @@ export class AuditStorageManager {
    */
   private async createDirectConnection(): Promise<any> {
     // Dynamic import to avoid issues
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mysql = require('mysql2/promise')
 
     // Check if we're in local development mode
@@ -759,9 +760,13 @@ export class AuditStorageManager {
       console.log(`   Target Database: ${database}`)
       console.log(`   Instance: ${process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME}`)
 
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { Connector } = require('@google-cloud/cloud-sql-connector')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { writeFileSync, unlinkSync } = require('fs')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { tmpdir } = require('os')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const path = require('path')
 
       let tempCredentialsFile: string | null = null

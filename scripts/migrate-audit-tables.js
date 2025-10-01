@@ -4,15 +4,10 @@
  *
  * This script creates audit tables during deployment to overcome
  * permission and timing issues in the main application flow.
+ *
+ * Environment variables are automatically loaded by Next.js.
+ * For standalone execution, ensure environment variables are set.
  */
-
-// Load environment variables from .env.local (for local development)
-try {
-  require('dotenv').config({ path: '.env.local' });
-} catch (error) {
-  // dotenv not installed - environment variables must be passed directly
-  console.log('ℹ️  dotenv not available, using existing environment variables');
-}
 
 const mysql = require('mysql2/promise');
 

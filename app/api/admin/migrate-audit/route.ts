@@ -7,12 +7,12 @@ import { NextRequest, NextResponse } from 'next/server'
  * Protected by API key authentication.
  */
 
-// Import the migration function
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { runMigration } = require('../../../../scripts/migrate-audit-tables.js')
-
 export async function POST(request: NextRequest) {
   try {
+    // Import the migration function dynamically to avoid build-time bundling issues
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { runMigration } = require('../../../../scripts/migrate-audit-tables.js')
+
     // Verify API key
     const apiKey = request.headers.get('x-api-key')
     const expectedApiKey = process.env.API_KEY
