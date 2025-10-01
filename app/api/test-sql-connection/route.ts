@@ -204,10 +204,8 @@ export async function GET(request: NextRequest) {
     const [testRows] = await connection.execute(`SELECT * FROM audit_events ORDER BY id DESC LIMIT 1`)
     log(`✅ Test data retrieved: ${JSON.stringify(testRows)}`)
 
-    // Clean up test data (but keep table)
-    log(`🗑️ Cleaning up test data...`)
-    await connection.execute(`DELETE FROM audit_events WHERE event_type = 'test'`)
-    log('✅ Test data cleaned up (table preserved)')
+    // Note: Skipping cleanup as mcp-reader doesn't have DELETE permissions (intentional security measure)
+    log('ℹ️  Test data preserved (mcp-reader has no DELETE permission by design)')
 
     // Close connection
     log('🔌 Closing connection...')
