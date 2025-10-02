@@ -179,7 +179,7 @@ export class AuditStorageManager {
     }
 
     this.isInitialized = true
-    console.log(`✅ Audit storage initialized: batch=${this.config.batchSize}, retention=${this.config.retentionDays}d`)
+    console.log(`✅ Audit storage initialized: batch=${this.config.batchSize}, flushInterval=${this.config.flushIntervalMs}ms, retention=${this.config.retentionDays}d`)
   }
 
   /**
@@ -663,8 +663,10 @@ export class AuditStorageManager {
   private startBatchFlushing(): void {
     if (flushTimer) {
       clearInterval(flushTimer)
+      console.log(`⏱️  Cleared existing flush timer, restarting with ${this.config.flushIntervalMs}ms interval`)
     }
 
+    console.log(`⏱️  Starting batch flush timer: ${this.config.flushIntervalMs}ms (${this.config.flushIntervalMs / 1000}s)`)
     flushTimer = setInterval(() => {
       this.flushBatch().catch(error => {
         console.error('❌ Scheduled batch flush failed:', error)
