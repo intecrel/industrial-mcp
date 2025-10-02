@@ -18,12 +18,12 @@ export interface AuditStorageConfig {
   compressionEnabled: boolean
 }
 
-// Default configuration - optimized for performance
+// Default configuration - balanced for performance and timeliness
 export const DEFAULT_AUDIT_CONFIG: AuditStorageConfig = {
   enabled: process.env.AUDIT_STORAGE_ENABLED?.trim() === 'true',
   storageType: (process.env.AUDIT_STORAGE_TYPE?.trim() as any) || 'hybrid',
   batchSize: parseInt(process.env.AUDIT_BATCH_SIZE || '50'),
-  flushIntervalMs: parseInt(process.env.AUDIT_FLUSH_INTERVAL_MS || '30000'), // 30 seconds
+  flushIntervalMs: parseInt(process.env.AUDIT_FLUSH_INTERVAL_MS || '10000'), // 10 seconds (reduced from 30s for faster visibility)
   retentionDays: parseInt(process.env.AUDIT_RETENTION_DAYS || '2555'), // 7 years
   enableStateCapture: process.env.AUDIT_ENABLE_STATE_CAPTURE?.trim() !== 'false',
   maxStateSizeKB: parseInt(process.env.AUDIT_MAX_STATE_SIZE_KB || '1024'), // 1MB
@@ -301,9 +301,21 @@ export class AuditStorageManager {
     auditBatch.events.push(storedEvent)
     auditBatch.size += JSON.stringify(storedEvent).length
 
+    // Immediate flush for high-risk or critical events
+    const shouldFlushImmediately =
+      event.risk_level === 'high' ||
+      event.risk_level === 'critical' ||
+      event.result === 'failure'
+
     // Check if batch should be flushed
-    if (auditBatch.events.length >= this.config.batchSize ||
+    if (shouldFlushImmediately ||
+        auditBatch.events.length >= this.config.batchSize ||
         auditBatch.size > 1024 * 1024) { // 1MB batch size limit
+
+      if (shouldFlushImmediately) {
+        console.log(`🚨 Immediate flush triggered: ${event.risk_level} risk event`)
+      }
+
       await this.flushBatch()
     }
   }
