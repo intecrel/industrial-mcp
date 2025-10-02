@@ -163,10 +163,9 @@ function buildAuditQuery(params: AuditQueryParams): { sql: string; values: any[]
   // Order by timestamp (newest first)
   sql += ` ORDER BY ae.timestamp DESC`
 
-  // Pagination
+  // Pagination (use direct values instead of placeholders for LIMIT/OFFSET)
   const offset = (params.page! - 1) * params.limit!
-  sql += ` LIMIT ? OFFSET ?`
-  values.push(params.limit, offset)
+  sql += ` LIMIT ${params.limit} OFFSET ${offset}`
 
   return { sql, values }
 }
@@ -236,8 +235,8 @@ export async function GET(request: NextRequest) {
     const countSql = sql.replace(/SELECT.*?FROM/, 'SELECT COUNT(*) as total FROM')
                         .replace(/ORDER BY.*$/, '')
                         .replace(/LIMIT.*$/, '')
-    const countValues = values.slice(0, -2) // Remove LIMIT and OFFSET values
-    const countResult = await mysql.query(countSql, countValues)
+    // No need to slice values since LIMIT/OFFSET are no longer in the values array
+    const countResult = await mysql.query(countSql, values)
     const total = countResult.data?.[0]?.total || 0
 
     // Handle CSV export
