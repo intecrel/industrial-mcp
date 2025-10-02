@@ -307,13 +307,20 @@ export class AuditStorageManager {
       event.risk_level === 'critical' ||
       event.result === 'failure'
 
+    // Check batch age (serverless functions may terminate before timer fires)
+    const batchAge = Date.now() - auditBatch.createdAt
+    const shouldFlushByAge = batchAge >= this.config.flushIntervalMs
+
     // Check if batch should be flushed
     if (shouldFlushImmediately ||
+        shouldFlushByAge ||
         auditBatch.events.length >= this.config.batchSize ||
         auditBatch.size > 1024 * 1024) { // 1MB batch size limit
 
       if (shouldFlushImmediately) {
         console.log(`🚨 Immediate flush triggered: ${event.risk_level} risk event`)
+      } else if (shouldFlushByAge) {
+        console.log(`⏰ Batch age flush triggered: ${batchAge}ms >= ${this.config.flushIntervalMs}ms`)
       }
 
       await this.flushBatch()
