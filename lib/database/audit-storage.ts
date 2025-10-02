@@ -609,42 +609,38 @@ export class AuditStorageManager {
   }
 
   /**
-   * Initialize database schema - VERIFY tables exist (do not create)
+   * Initialize database schema - ASSUME tables exist (no verification)
    * Tables should be created via migration endpoint before deployment
    *
-   * NOTE: Auto-creation removed due to serverless timeout issues.
+   * NOTE: Table verification removed due to serverless timeout issues.
    * Run POST /api/admin/migrate-audit after deployment to create tables.
+   * If tables don't exist, writes will fail and fall back to in-memory only.
    */
   private async initializeDatabase(): Promise<void> {
     try {
       console.log('🔧 Starting audit database initialization...')
-      console.log('📍 Verifying audit tables exist (auto-creation disabled for performance)')
+      console.log('📍 Assuming audit tables exist (verification skipped for performance)')
+      console.log('💡 If tables missing, run: POST /api/admin/migrate-audit')
 
       // Get MySQL connection from global database manager
       const dbManager = await getGlobalDatabaseManager()
       const mysql = dbManager.getConnection('cloud_sql') || dbManager.getConnection('mysql')
 
       if (!mysql) {
-        console.warn('⚠️  MySQL connection not available, skipping table verification')
-        console.warn('⚠️  Audit events will be stored in memory only until next flush')
+        console.warn('⚠️  MySQL connection not available')
+        console.warn('⚠️  Audit events will be stored in memory only')
+        this.isDatabaseInitialized = false
         return
       }
 
-      // Verify tables exist (with timeout to prevent hanging)
-      console.log('🔍 Checking if audit tables exist...')
-      await this.verifyTablesExist(mysql)
-      console.log('✅ All required audit tables exist')
-
+      // Assume tables exist - if they don't, batch flush will fail gracefully
+      console.log('✅ Database connection available, marking as initialized')
+      console.log('✅ Audit events will be written to database on next flush')
       this.isDatabaseInitialized = true
 
     } catch (error) {
-      console.error('❌ Failed to verify audit tables:', error)
-      console.warn('💡 Tables must be created via migration:')
-      console.warn('   1. Call API endpoint: POST /api/admin/migrate-audit (with x-api-key header)')
-      console.warn('   2. Or run locally: node scripts/migrate-audit-tables.js')
-      console.warn('⚠️ Continuing without database audit storage (in-memory mode only)')
-
-      // Don't throw - allow in-memory audit storage to work
+      console.error('❌ Failed to initialize audit database:', error)
+      console.warn('⚠️ Continuing with in-memory audit storage only')
       this.isDatabaseInitialized = false
     }
   }
