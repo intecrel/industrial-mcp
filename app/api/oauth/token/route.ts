@@ -130,6 +130,8 @@ export async function POST(request: NextRequest) {
         tokenResponse.refresh_token = newRefreshToken;
 
         console.log(`✅ Access token refreshed for client: ${client.client_name} (refresh token rotated)`);
+        console.log(`🔄 Refreshed token response includes new refresh_token: ${!!tokenResponse.refresh_token}`);
+        console.log(`📦 Refreshed token response keys: ${Object.keys(tokenResponse).join(', ')}`);
 
         return NextResponse.json(tokenResponse, {
           status: 200,
@@ -213,6 +215,8 @@ export async function POST(request: NextRequest) {
       );
 
       console.log(`✅ Access token issued for client: ${client.client_name} with scopes: ${scopeValidation.scopes.join(' ')}`);
+      console.log(`🔄 Token response includes refresh_token: ${!!tokenResponse.refresh_token}`);
+      console.log(`📦 Token response keys: ${Object.keys(tokenResponse).join(', ')}`);
 
       return NextResponse.json(tokenResponse, {
         status: 200,
