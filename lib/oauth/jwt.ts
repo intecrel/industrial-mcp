@@ -14,10 +14,11 @@ export interface TokenClaims {
   iat: number; // Issued at
   scope: string; // OAuth scopes
   client_id: string; // OAuth client identifier
-  token_type: 'access_token' | 'authorization_code';
+  token_type: 'access_token' | 'authorization_code' | 'refresh_token';
   redirect_uri?: string; // For authorization codes
   code_challenge?: string; // For PKCE
   code_challenge_method?: string; // For PKCE
+  jti?: string; // JWT ID for refresh token rotation
   [key: string]: any; // Index signature for JWT payload
 }
 
@@ -27,6 +28,7 @@ export interface AccessTokenPayload {
   expires_in: number;
   scope: string;
   client_id: string;
+  refresh_token?: string; // Optional refresh token (MCP 2025-06-18 spec)
 }
 
 /**
@@ -41,16 +43,17 @@ const getJwtSecret = (): Uint8Array => {
  * Generate an access token for OAuth client
  */
 export const generateAccessToken = async (
-  clientId: string, 
+  clientId: string,
   scopes: string[],
-  userEmail?: string
+  userEmail?: string,
+  includeRefreshToken: boolean = false
 ): Promise<AccessTokenPayload> => {
   const config = getOAuthConfig();
   const now = Math.floor(Date.now() / 1000);
-  
+
   // Add 30-second buffer for clock skew and connection stability
   const clockSkewBuffer = 30;
-  
+
   const claims: TokenClaims = {
     iss: config.issuer,
     sub: clientId,
@@ -64,18 +67,73 @@ export const generateAccessToken = async (
   };
 
   const secret = getJwtSecret();
-  
+
   const accessToken = await new SignJWT(claims)
     .setProtectedHeader({ alg: config.jwtAlgorithm })
     .sign(secret);
 
-  return {
+  const response: AccessTokenPayload = {
     access_token: accessToken,
     token_type: 'Bearer',
     expires_in: config.accessTokenTtl,
     scope: scopes.join(' '),
     client_id: clientId
   };
+
+  // Generate refresh token if requested (MCP 2025-06-18 spec)
+  if (includeRefreshToken) {
+    response.refresh_token = await generateRefreshToken(clientId, scopes, userEmail);
+  }
+
+  return response;
+};
+
+/**
+ * Generate a refresh token for OAuth client
+ * MCP 2025-06-18 spec: Must rotate refresh tokens for public clients
+ */
+export const generateRefreshToken = async (
+  clientId: string,
+  scopes: string[],
+  userEmail?: string,
+  previousRefreshTokenId?: string
+): Promise<string> => {
+  const config = getOAuthConfig();
+  const now = Math.floor(Date.now() / 1000);
+
+  // Generate unique token ID for rotation tracking
+  const tokenId = generateSecureRandomString(32);
+
+  const claims: TokenClaims = {
+    iss: config.issuer,
+    sub: clientId,
+    aud: config.issuer,
+    exp: now + config.refreshTokenTtl,
+    iat: now,
+    scope: scopes.join(' '),
+    client_id: clientId,
+    token_type: 'refresh_token',
+    jti: tokenId, // JWT ID for rotation
+    user_email: userEmail
+  };
+
+  const secret = getJwtSecret();
+
+  const refreshToken = await new SignJWT(claims)
+    .setProtectedHeader({ alg: config.jwtAlgorithm })
+    .sign(secret);
+
+  // If there was a previous refresh token, revoke it (rotation)
+  if (previousRefreshTokenId) {
+    try {
+      const { revokeRefreshToken } = await import('./token-blacklist');
+      await revokeRefreshToken(previousRefreshTokenId);
+    } catch {
+      // Continue if revocation fails
+    }
+  }
+
+  return refreshToken;
 };
 
 /**

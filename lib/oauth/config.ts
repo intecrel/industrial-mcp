@@ -13,6 +13,7 @@ export interface OAuthConfig {
   jwtSecret: string;
   jwtAlgorithm: string;
   accessTokenTtl: number;
+  refreshTokenTtl: number;
   authCodeTtl: number;
 }
 
@@ -58,7 +59,8 @@ export const getOAuthConfig = (): OAuthConfig => {
     supportedScopes: ['mcp:tools', 'mcp:resources', 'mcp:prompts', 'claudeai'],
     jwtSecret: process.env.OAUTH_JWT_SECRET || 'dev-secret-change-in-production',
     jwtAlgorithm: 'HS256', // Using symmetric for simplicity, can upgrade to RS256 later
-    accessTokenTtl: 86400, // 24 hours (extended for MCP client stability)
+    accessTokenTtl: 3600, // 1 hour (MCP 2025-06-18 spec: short-lived tokens)
+    refreshTokenTtl: 2592000, // 30 days (with rotation for public clients)
     authCodeTtl: 600, // 10 minutes
   };
 };

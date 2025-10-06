@@ -50,7 +50,7 @@ export async function GET() {
       
       // MCP-specific extensions (non-standard but clearly marked)
       mcp_extensions: {
-        protocol_version: '2025-03-26',
+        protocol_version: '2025-06-18',
         server_info: {
           name: 'Industrial MCP Server',
           version: '2.0.0'

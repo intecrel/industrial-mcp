@@ -27,7 +27,7 @@
   "license": "MIT",
   "dependencies": {
     "@google-cloud/cloud-sql-connector": "^1.8.2",
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/sdk": "^1.19.1",
     "@upstash/redis": "^1.35.3",
     "@vercel/mcp-adapter": "1.0.0",
     "jose": "^6.0.12",

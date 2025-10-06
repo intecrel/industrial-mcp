@@ -121,7 +121,7 @@ export async function getBlacklistSize(): Promise<number> {
  */
 export async function clearBlacklist(): Promise<void> {
   const client = getRedisClient();
-  
+
   if (client) {
     try {
       const pattern = `${getKeyPrefix()}oauth:blacklist:*`;
@@ -135,5 +135,46 @@ export async function clearBlacklist(): Promise<void> {
     }
   } else {
     memoryBlacklist.clear();
+  }
+}
+
+/**
+ * Revoke a refresh token by its JWT ID (for rotation)
+ * MCP 2025-06-18 spec requires refresh token rotation for public clients
+ */
+export async function revokeRefreshToken(jti: string): Promise<void> {
+  const client = getRedisClient();
+
+  if (client) {
+    try {
+      const key = `${getKeyPrefix()}oauth:revoked-refresh:${jti}`;
+      // Set with 30 day expiration (matches refresh token lifetime)
+      await client.setex(key, 2592000, 'revoked');
+    } catch (error) {
+      console.warn('Redis refresh token revocation failed, using memory fallback:', error);
+      memoryBlacklist.add(`refresh:${jti}`);
+    }
+  } else {
+    memoryBlacklist.add(`refresh:${jti}`);
+  }
+}
+
+/**
+ * Check if refresh token is revoked by its JWT ID
+ */
+export async function isRefreshTokenRevoked(jti: string): Promise<boolean> {
+  const client = getRedisClient();
+
+  if (client) {
+    try {
+      const key = `${getKeyPrefix()}oauth:revoked-refresh:${jti}`;
+      const result = await client.get(key);
+      return result === 'revoked';
+    } catch (error) {
+      console.warn('Redis refresh token check failed, using memory fallback:', error);
+      return memoryBlacklist.has(`refresh:${jti}`);
+    }
+  } else {
+    return memoryBlacklist.has(`refresh:${jti}`);
   }
 }
