@@ -42,9 +42,10 @@ export async function GET() {
       // Response types supported (standard)
       response_types_supported: ['code'],
       
-      // Grant types supported (standard) 
+      // Grant types supported (MCP 2025-06-18 requires refresh_token)
       grant_types_supported: [
         'authorization_code',
+        'refresh_token',
         'client_credentials'
       ],
       
