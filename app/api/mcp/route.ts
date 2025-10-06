@@ -39,19 +39,34 @@ export async function POST(request: NextRequest) {
         authContext = await authenticateRequest(request)
         console.log(`✅ Authenticated user: ${authContext.userId} via ${authContext.method}`)
       } catch (error) {
-        console.log(`❌ Authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.log(`❌ Authentication failed: ${errorMessage}`);
+
+        // Determine OAuth error type based on error message
+        let oauthError = 'invalid_token';
+        let oauthDescription = 'The access token is invalid';
+
+        if (errorMessage.includes('exp') || errorMessage.includes('expired')) {
+          oauthError = 'invalid_token';
+          oauthDescription = 'The access token has expired';
+        } else if (errorMessage.includes('Missing') || errorMessage.includes('Authorization')) {
+          oauthError = 'invalid_request';
+          oauthDescription = 'Missing or invalid Authorization header';
+        }
+
         return NextResponse.json({
           jsonrpc: "2.0",
           id,
           error: {
             code: -32001,
             message: "Authentication required",
-            data: createAuthError(error instanceof Error ? error.message : 'Authentication failed')
+            data: createAuthError(errorMessage)
           }
-        }, { 
+        }, {
           status: 401,
           headers: {
             'Content-Type': 'application/json',
+            'WWW-Authenticate': `Bearer error="${oauthError}", error_description="${oauthDescription}"`,
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization'
