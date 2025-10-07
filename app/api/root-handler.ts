@@ -62,7 +62,7 @@ async function handleRootGET(nextRequest: NextRequest): Promise<Response> {
     // Return discovery information that tells Claude.ai this is the MCP endpoint
     return NextResponse.json({
       // Standard MCP discovery format
-      protocol_version: "2025-03-26",
+      protocol_version: "2025-06-18",
       server_name: "Industrial MCP Server",
       server_version: "2.0.0",
       
@@ -96,7 +96,7 @@ async function handleRootGET(nextRequest: NextRequest): Promise<Response> {
   // Provide comprehensive MCP server discovery information
   const mcpDiscovery = {
     // MCP Protocol information
-    protocol_version: "2025-03-26",
+    protocol_version: "2025-06-18",
     server_name: "Industrial MCP Server",
     server_version: "2.0.0",
     

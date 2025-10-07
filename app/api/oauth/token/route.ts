@@ -34,24 +34,30 @@ export async function POST(request: NextRequest) {
     const client_id = body.client_id;
     const client_secret = body.client_secret;
     const code_verifier = body.code_verifier;
-    
-    console.log(`🔍 Token request: grant_type=${grant_type}, client_id=${client_id}, code=${code?.substring(0, 20)}..., redirect_uri=${redirect_uri}`);
-    
+    const refresh_token = body.refresh_token;
+
+    console.log(`🔍 Token request: grant_type=${grant_type}, client_id=${client_id}`);
+
     // Validate grant type
-    if (grant_type !== 'authorization_code') {
+    if (grant_type !== 'authorization_code' && grant_type !== 'refresh_token') {
       console.log(`❌ Invalid grant_type: ${grant_type}`);
-      return createErrorResponse('unsupported_grant_type', 'Only authorization_code grant is supported');
+      return createErrorResponse('unsupported_grant_type', 'Only authorization_code and refresh_token grants are supported');
     }
     
-    // Validate required parameters
-    if (!code) {
-      console.log('❌ Missing code parameter');
-      return createErrorResponse('invalid_request', 'Missing code parameter');
-    }
-    
+    // Validate required parameters based on grant type
     if (!client_id) {
       console.log('❌ Missing client_id parameter');
       return createErrorResponse('invalid_request', 'Missing client_id parameter');
+    }
+
+    if (grant_type === 'authorization_code' && !code) {
+      console.log('❌ Missing code parameter for authorization_code grant');
+      return createErrorResponse('invalid_request', 'Missing code parameter');
+    }
+
+    if (grant_type === 'refresh_token' && !refresh_token) {
+      console.log('❌ Missing refresh_token parameter for refresh_token grant');
+      return createErrorResponse('invalid_request', 'Missing refresh_token parameter');
     }
     
     // Authenticate client - with fallback for Claude.ai dynamic registration
@@ -71,7 +77,78 @@ export async function POST(request: NextRequest) {
         return createErrorResponse('invalid_client', error instanceof Error ? error.message : 'Client authentication failed');
       }
     }
-    
+
+    // Handle refresh_token grant type (MCP 2025-06-18 spec)
+    if (grant_type === 'refresh_token') {
+      try {
+        const refreshClaims = await validateToken(refresh_token);
+        console.log(`✅ Refresh token decoded: client_id=${refreshClaims.client_id}, scope=${refreshClaims.scope}`);
+
+        // Verify it's a refresh token
+        if (refreshClaims.token_type !== 'refresh_token') {
+          return createErrorResponse('invalid_grant', 'Invalid token type');
+        }
+
+        // Verify the refresh token was issued to the requesting client
+        if (refreshClaims.client_id !== client.client_id) {
+          console.log(`❌ Client ID mismatch: refresh token issued to ${refreshClaims.client_id}, request from ${client.client_id}`);
+          return createErrorResponse('invalid_grant', 'Refresh token was not issued to this client');
+        }
+
+        // Check if refresh token is revoked
+        if (refreshClaims.jti) {
+          const { isRefreshTokenRevoked } = await import('../../../../lib/oauth/token-blacklist');
+          if (await isRefreshTokenRevoked(refreshClaims.jti)) {
+            return createErrorResponse('invalid_grant', 'Refresh token has been revoked');
+          }
+        }
+
+        // Parse and validate scopes
+        const scopes = refreshClaims.scope.split(' ').filter(s => s.length > 0);
+        const scopeValidation = validateScopes(refreshClaims.scope);
+        if (!scopeValidation.valid) {
+          return createErrorResponse('invalid_scope', scopeValidation.errors.join(', '));
+        }
+
+        // Generate new access token with rotated refresh token
+        const { generateRefreshToken } = await import('../../../../lib/oauth/jwt');
+        const newRefreshToken = await generateRefreshToken(
+          client.client_id,
+          scopeValidation.scopes,
+          refreshClaims.user_email,
+          refreshClaims.jti // Revoke old refresh token
+        );
+
+        const tokenResponse = await generateAccessToken(
+          client.client_id,
+          scopeValidation.scopes,
+          refreshClaims.user_email,
+          false // Don't include refresh token here
+        );
+
+        // Add the new rotated refresh token
+        tokenResponse.refresh_token = newRefreshToken;
+
+        console.log(`✅ Access token refreshed for client: ${client.client_name} (refresh token rotated)`);
+        console.log(`🔄 Refreshed token response includes new refresh_token: ${!!tokenResponse.refresh_token}`);
+        console.log(`📦 Refreshed token response keys: ${Object.keys(tokenResponse).join(', ')}`);
+
+        return NextResponse.json(tokenResponse, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+            'Pragma': 'no-cache'
+          }
+        });
+
+      } catch (error) {
+        console.error('❌ Refresh token validation failed:', error);
+        return createErrorResponse('invalid_grant', error instanceof Error ? error.message : 'Invalid refresh token');
+      }
+    }
+
+    // Handle authorization_code grant type
     // Validate and decode authorization code
     let authClaims: TokenClaims;
     try {
@@ -129,15 +206,18 @@ export async function POST(request: NextRequest) {
     }
     
     try {
-      // Generate access token using the authenticated client's ID and user email from auth code
+      // Generate access token with refresh token (MCP 2025-06-18 spec)
       const tokenResponse = await generateAccessToken(
-        client.client_id, 
+        client.client_id,
         scopeValidation.scopes,
-        authClaims.user_email
+        authClaims.user_email,
+        true // Include refresh token for initial authorization
       );
-      
+
       console.log(`✅ Access token issued for client: ${client.client_name} with scopes: ${scopeValidation.scopes.join(' ')}`);
-      
+      console.log(`🔄 Token response includes refresh_token: ${!!tokenResponse.refresh_token}`);
+      console.log(`📦 Token response keys: ${Object.keys(tokenResponse).join(', ')}`);
+
       return NextResponse.json(tokenResponse, {
         status: 200,
         headers: {
@@ -146,7 +226,7 @@ export async function POST(request: NextRequest) {
           'Pragma': 'no-cache'
         }
       });
-      
+
     } catch (error) {
       console.error('❌ Error generating access token:', error);
       return createErrorResponse('server_error', 'Failed to generate access token');

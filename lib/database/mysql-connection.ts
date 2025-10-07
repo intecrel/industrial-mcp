@@ -103,14 +103,13 @@ export class MySQLConnection extends BaseDatabaseConnection {
         user: this.config.username,
         password: this.config.password,
         database: this.config.database,
-        connectionLimit: this.config.maxConnections || 10,
         timezone: 'Z',
         dateStrings: false,
         multipleStatements: this.mysqlConfig.multipleStatements || false,
         charset: this.mysqlConfig.charset || 'utf8mb4',
-        idleTimeout: 300000,
-        keepAliveInitialDelay: 0,
-        enableKeepAlive: true
+        // Connection timeout settings for table creation operations
+        connectTimeout: 120000, // 2 minutes to establish connection
+        // Note: acquireTimeout, timeout, idleTimeout only apply to pools
       }
 
       console.log(`🔧 Cloud SQL Connector: Getting connection options for ${connectionName}`)
@@ -119,18 +118,18 @@ export class MySQLConnection extends BaseDatabaseConnection {
         instanceConnectionName: connectionName
         // ipType defaults to 'PUBLIC' - omit for now to avoid TypeScript issues
       })
-      
-      console.log(`🔧 Cloud SQL Connector: Received client options, creating pool`)
 
-      // Create pool with connector options
-      this.pool = mysql.createPool({
+      console.log(`🔧 Cloud SQL Connector: Received client options, creating single connection`)
+      console.log(`ℹ️  Using single connection (not pool) for compatibility with non-Enterprise Plus instances`)
+
+      // Use createConnection() instead of createPool() for non-Enterprise Plus Cloud SQL instances
+      // This matches the migration script pattern and avoids pooling issues
+      this.connection = await mysql.createConnection({
         ...connectionConfig,
         ...clientOpts
       })
 
       console.log(`🔧 Cloud SQL Connector: Testing connection...`)
-      // Test connection
-      this.connection = await this.pool.getConnection()
       await this.connection.ping()
       
       this._isConnected = true
@@ -176,10 +175,13 @@ export class MySQLConnection extends BaseDatabaseConnection {
       dateStrings: false,
       multipleStatements: this.mysqlConfig.multipleStatements || false,
       charset: this.mysqlConfig.charset || 'utf8mb4',
-      
-      // Connection health monitoring
-      idleTimeout: 300000, // 5 minutes
-      
+
+      // Connection timeout settings for table creation operations
+      connectTimeout: 120000, // 2 minutes to establish connection
+      acquireTimeout: 120000, // 2 minutes to acquire connection from pool
+      timeout: 180000, // 3 minutes for query execution (table creation)
+      idleTimeout: 300000, // 5 minutes idle timeout
+
       // Cloud SQL optimizations
       keepAliveInitialDelay: 0,
       enableKeepAlive: true
@@ -280,8 +282,8 @@ export class MySQLConnection extends BaseDatabaseConnection {
     this.validateConnection()
 
     try {
-      if (!this.pool) {
-        throw new Error('MySQL pool not initialized')
+      if (!this.connection && !this.pool) {
+        throw new Error('MySQL connection not initialized')
       }
 
       let sanitizedParams: any[] = []
@@ -292,10 +294,15 @@ export class MySQLConnection extends BaseDatabaseConnection {
         sanitizedParams = this.sanitizeParams(Object.values(params))
       }
 
-      // Execute query using pool
-      const [rows, fields] = sanitizedParams.length > 0 
-        ? await this.pool.execute(sql, sanitizedParams) as [any[], mysql.FieldPacket[]]
-        : await this.pool.query(sql) as [any[], mysql.FieldPacket[]]
+      // Execute query using connection or pool
+      const executor = this.connection || this.pool
+      if (!executor) {
+        throw new Error('No MySQL executor available')
+      }
+
+      const [rows, fields] = sanitizedParams.length > 0
+        ? await executor.execute(sql, sanitizedParams) as [any[], mysql.FieldPacket[]]
+        : await executor.query(sql) as [any[], mysql.FieldPacket[]]
       
       // Handle different result types
       let affectedRows = 0
@@ -482,7 +489,32 @@ export class MySQLConnection extends BaseDatabaseConnection {
 
   private validateQuerySecurity(sql: string): void {
     const upperSql = sql.toUpperCase().trim()
-    
+
+    // Exception: Allow CREATE TABLE for audit system tables
+    const auditTablePatterns = [
+      /\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+audit_events\b/,
+      /\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+database_audit_events\b/,
+      /\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+audit_retention_policy\b/
+    ]
+
+    const isAuditTableCreation = auditTablePatterns.some(pattern => {
+      const match = pattern.test(upperSql)
+      if (match) {
+        console.log('✅ Pattern matched:', pattern.source)
+      }
+      return match
+    })
+
+    if (isAuditTableCreation) {
+      console.log('✅ Allowing audit table creation:', sql.substring(0, 100) + '...')
+      return // Allow audit table creation
+    }
+
+    // Debug: Log first part of non-matching SQL for troubleshooting
+    if (upperSql.startsWith('CREATE TABLE')) {
+      console.log('🔍 CREATE TABLE detected but no audit pattern match:', sql.substring(0, 100) + '...')
+    }
+
     // Security: Block dangerous operations for MCP endpoints
     const dangerousPatterns = [
       /\bDROP\s+/,
@@ -496,7 +528,7 @@ export class MySQLConnection extends BaseDatabaseConnection {
       /\bINTO\s+OUTFILE\s+/,
       /\bINTO\s+DUMPFILE\s+/
     ]
-    
+
     for (const pattern of dangerousPatterns) {
       if (pattern.test(upperSql)) {
         throw new Error(`Security: SQL query contains potentially dangerous operation: ${pattern.source}`)
@@ -542,5 +574,14 @@ export class MySQLConnection extends BaseDatabaseConnection {
   private maskConnectionString(hostPort: string): string {
     // Security: Mask sensitive information in logs
     return hostPort.replace(/:\d+$/, ':***')
+  }
+
+  /**
+   * Get raw mysql2 connection/pool for direct execute() calls
+   * Use this when you need native mysql2 behavior without QueryResult wrapping
+   * Returns the single connection if using Cloud SQL Connector, or pool otherwise
+   */
+  getPool(): mysql.Pool | mysql.Connection | null {
+    return this.pool || this.connection
   }
 }

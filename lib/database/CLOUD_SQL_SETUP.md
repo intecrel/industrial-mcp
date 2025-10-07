@@ -34,8 +34,12 @@ CLOUD_SQL_CLIENT_KEY="-----BEGIN RSA PRIVATE KEY-----
 MIIEpAIBAAKCAQEA4f6wg8OFnGdC8eQ5f3N1l8xJVfU...
 -----END RSA PRIVATE KEY-----"
 
-# Database Names (configure according to your actual databases)
-CLOUD_SQL_DB_PRIMARY=your_primary_database_name
+# Database Names
+# Set different database names per environment in Vercel:
+# Production: Set CLOUD_SQL_DB_PRIMARY
+# Preview: Set CLOUD_SQL_DB_STAGING
+# Both variables support fallback for backward compatibility
+CLOUD_SQL_DB_PRIMARY=your_production_database_name
 CLOUD_SQL_DB_STAGING=your_staging_database_name
 
 # Cloud SQL Connector (Recommended for serverless deployment)
@@ -47,7 +51,7 @@ CLOUD_SQL_MAX_CONNECTIONS=5
 CLOUD_SQL_TIMEOUT=30000
 
 # Default Database Selection
-DEFAULT_DATABASE=cloud_sql_primary  # or cloud_sql_staging for dev/test
+DEFAULT_DATABASE=cloud_sql  # Cloud SQL database connection
 ```
 
 ## 🚀 Connection Methods

@@ -96,3 +96,4 @@ certs/
 *-key.pem
 client-*.pem
 server-*.pem
+.env.vercel.*

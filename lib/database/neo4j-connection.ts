@@ -269,7 +269,7 @@ export class Neo4jConnection extends BaseDatabaseConnection {
     // Handle Node objects
     if (value.constructor.name === 'Node') {
       return {
-        identity: value.identity.toNumber(),
+        identity: this.convertToNumber(value.identity),
         labels: value.labels,
         properties: this.convertNeo4jProperties(value.properties)
       }
@@ -278,9 +278,9 @@ export class Neo4jConnection extends BaseDatabaseConnection {
     // Handle Relationship objects
     if (value.constructor.name === 'Relationship') {
       return {
-        identity: value.identity.toNumber(),
-        start: value.start.toNumber(),
-        end: value.end.toNumber(),
+        identity: this.convertToNumber(value.identity),
+        start: this.convertToNumber(value.start),
+        end: this.convertToNumber(value.end),
         type: value.type,
         properties: this.convertNeo4jProperties(value.properties)
       }
@@ -313,8 +313,27 @@ export class Neo4jConnection extends BaseDatabaseConnection {
     if (value == null) return 0
     if (typeof value === 'number') return value
     if (neo4j.isInt(value)) return value.toNumber()
+
+    // Handle identity values which might be integers or other types
+    if (value && typeof value.toNumber === 'function') {
+      try {
+        return value.toNumber()
+      } catch (error) {
+        console.warn('Failed to convert value to number using toNumber():', error)
+      }
+    }
+
+    // Handle identity values that might be native JavaScript numbers
+    if (value && typeof value === 'object' && 'low' in value && 'high' in value) {
+      // Neo4j Integer object structure
+      return value.low + (value.high * 0x100000000)
+    }
+
     if (typeof value === 'string') return parseFloat(value) || 0
-    return 0
+
+    // Fallback for any numeric value
+    const parsed = Number(value)
+    return isNaN(parsed) ? 0 : parsed
   }
 
   // Security methods
@@ -379,5 +398,470 @@ export class Neo4jConnection extends BaseDatabaseConnection {
   private maskConnectionString(uri: string): string {
     // Security: Mask sensitive information in logs
     return uri.replace(/:([^@]+)@/, ':***@')
+  }
+
+  // State capture methods for audit trails
+
+  /**
+   * Capture node state by ID for audit trails
+   */
+  async captureNodeState(nodeId: number | string): Promise<any> {
+    try {
+      const query = `MATCH (n) WHERE id(n) = $nodeId RETURN n`
+      const result = await this.query(query, { nodeId })
+      return result.data && result.data.length > 0 ? result.data[0].n : null
+    } catch (error) {
+      console.warn('Failed to capture node state:', error)
+      return null
+    }
+  }
+
+  /**
+   * Capture multiple nodes state by criteria for audit trails
+   */
+  async captureNodesState(matchClause: string, parameters: Record<string, any> = {}): Promise<any[]> {
+    try {
+      const query = `${matchClause} RETURN n`
+      const result = await this.query(query, parameters)
+      return result.data ? result.data.map(record => record.n) : []
+    } catch (error) {
+      console.warn('Failed to capture nodes state:', error)
+      return []
+    }
+  }
+
+  /**
+   * Capture relationship state by ID for audit trails
+   */
+  async captureRelationshipState(relationshipId: number | string): Promise<any> {
+    try {
+      const query = `MATCH ()-[r]->() WHERE id(r) = $relationshipId RETURN r`
+      const result = await this.query(query, { relationshipId })
+      return result.data && result.data.length > 0 ? result.data[0].r : null
+    } catch (error) {
+      console.warn('Failed to capture relationship state:', error)
+      return null
+    }
+  }
+
+  /**
+   * Analyze query to determine what entities it might affect
+   * Used for pre-execution state capture
+   */
+  analyzeQueryForStateCapture(cypher: string, parameters: Record<string, any> = {}): {
+    needsStateCapture: boolean;
+    captureStrategy: 'nodes' | 'relationships' | 'both' | 'none';
+    matchClause?: string;
+  } {
+    const upperQuery = cypher.toUpperCase().trim()
+
+    // For SET operations, we need to capture before state
+    if (upperQuery.includes('SET ')) {
+      // Extract MATCH clause for state capture
+      const matchMatch = cypher.match(/^\s*(MATCH\s+[^(SET|WHERE)]*)/i)
+      if (matchMatch) {
+        return {
+          needsStateCapture: true,
+          captureStrategy: 'nodes',
+          matchClause: matchMatch[1]
+        }
+      }
+    }
+
+    // For MERGE operations on relationships
+    if (upperQuery.includes('MERGE ') && (upperQuery.includes('-->') || upperQuery.includes('-[') || upperQuery.includes(']->'))) {
+      return {
+        needsStateCapture: true,
+        captureStrategy: 'both'
+      }
+    }
+
+    // For CREATE operations
+    if (upperQuery.includes('CREATE ')) {
+      return {
+        needsStateCapture: false, // No before state needed for creation
+        captureStrategy: 'none'
+      }
+    }
+
+    return {
+      needsStateCapture: false,
+      captureStrategy: 'none'
+    }
+  }
+
+  /**
+   * Execute query with state capture for audit trails
+   */
+  async queryWithAuditCapture<T = any>(
+    cypher: string,
+    params?: any[] | Record<string, any>,
+    captureStates: boolean = true
+  ): Promise<QueryResult<T> & { beforeState?: any; afterState?: any }> {
+    const startTime = Date.now()
+    let beforeState: any = null
+    let afterState: any = null
+
+    try {
+      // Analyze query for state capture needs
+      const parameters = Array.isArray(params) ? this.convertParams(params) : (params || {})
+      const analysis = this.analyzeQueryForStateCapture(cypher, parameters)
+
+      // Capture before state if needed
+      if (captureStates && analysis.needsStateCapture && analysis.matchClause) {
+        beforeState = await this.captureNodesState(analysis.matchClause, parameters)
+      }
+
+      // Execute the query
+      const result = await this.query<T>(cypher, params)
+
+      // Capture after state for write operations
+      if (captureStates && this.isWriteOperation(cypher) && analysis.matchClause) {
+        afterState = await this.captureNodesState(analysis.matchClause, parameters)
+      }
+
+      return {
+        ...result,
+        beforeState,
+        afterState
+      }
+    } catch (error) {
+      return {
+        success: false,
+        data: [],
+        affected: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        beforeState,
+        afterState
+      } as QueryResult<T> & { beforeState?: any; afterState?: any }
+    }
+  }
+
+  /**
+   * Determine if a query is a write operation
+   */
+  private isWriteOperation(cypher: string): boolean {
+    const upperQuery = cypher.toUpperCase().trim()
+    return upperQuery.includes('CREATE ') ||
+           upperQuery.includes('MERGE ') ||
+           upperQuery.includes('SET ')
+  }
+
+  /**
+   * Calculate query complexity score based on various factors
+   */
+  calculateQueryComplexity(cypher: string, parameters: Record<string, any> = {}): number {
+    let complexity = 0
+    const upperQuery = cypher.toUpperCase()
+
+    // Base complexity for different operations
+    if (upperQuery.includes('MATCH')) complexity += 10
+    if (upperQuery.includes('CREATE')) complexity += 20
+    if (upperQuery.includes('MERGE')) complexity += 30
+    if (upperQuery.includes('SET')) complexity += 15
+
+    // Relationship complexity
+    const relationshipCount = (cypher.match(/--\>|<--|--/g) || []).length
+    complexity += relationshipCount * 5
+
+    // Parameter complexity
+    complexity += Object.keys(parameters).length * 2
+
+    // Query length factor
+    complexity += Math.floor(cypher.length / 100) * 5
+
+    // OPTIONAL MATCH increases complexity
+    if (upperQuery.includes('OPTIONAL MATCH')) complexity += 15
+
+    // Collections and aggregations
+    if (upperQuery.includes('COLLECT(') || upperQuery.includes('COUNT(')) complexity += 10
+
+    // Path traversal complexity
+    const pathTraversals = (cypher.match(/\*[0-9]+\.\.[0-9]+/g) || []).length
+    complexity += pathTraversals * 20
+
+    // Cap at 100
+    return Math.min(complexity, 100)
+  }
+
+  /**
+   * Estimate affected entities from query result counters
+   */
+  estimateAffectedEntities(result: QueryResult<any>): { nodes: number; relationships: number } {
+    const counters = result.metadata?.counters as any
+
+    if (counters) {
+      return {
+        nodes: (counters.nodesCreated || 0) + (counters.nodesDeleted || 0),
+        relationships: (counters.relationshipsCreated || 0) + (counters.relationshipsDeleted || 0)
+      }
+    }
+
+    // Fallback estimation based on result size
+    const resultSize = result.data?.length || 0
+    return {
+      nodes: resultSize,
+      relationships: 0
+    }
+  }
+
+  // Phase 3: Transaction Safety Integration
+
+  /**
+   * Execute write operations with mandatory transaction wrapping
+   */
+  async executeWriteOperationSafely<T = any>(
+    cypher: string,
+    params?: any[] | Record<string, any>,
+    options: {
+      maxOperationsPerTransaction?: number;
+      timeoutMs?: number;
+      captureState?: boolean;
+      transactionId?: string;
+    } = {}
+  ): Promise<QueryResult<T> & { beforeState?: any; afterState?: any; transactionId: string }> {
+    const transactionId = options.transactionId || `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const maxOperations = options.maxOperationsPerTransaction || 1000
+    const timeoutMs = options.timeoutMs || 30000
+    const captureState = options.captureState !== false
+
+    let beforeState: any = null
+    let afterState: any = null
+    let operationCount = 0
+
+    try {
+      // Begin transaction
+      await this.beginTransaction()
+      console.log(`🔄 Started transaction: ${transactionId}`)
+
+      // Set transaction timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Transaction timeout')), timeoutMs)
+      })
+
+      // Capture before state if needed
+      if (captureState) {
+        const parameters = Array.isArray(params) ? this.convertParams(params) : (params || {})
+        const analysis = this.analyzeQueryForStateCapture(cypher, parameters)
+
+        if (analysis.needsStateCapture && analysis.matchClause) {
+          beforeState = await this.captureNodesState(analysis.matchClause, parameters)
+          console.log(`📸 Captured before state: ${beforeState?.length || 0} entities`)
+        }
+      }
+
+      // Execute the operation within transaction
+      const operationPromise = this.query<T>(cypher, params)
+      const result = await Promise.race([operationPromise, timeoutPromise]) as QueryResult<T>
+
+      operationCount++
+
+      if (!result.success) {
+        throw new Error(result.error || 'Write operation failed')
+      }
+
+      // Check operation count limits
+      if (operationCount > maxOperations) {
+        throw new Error(`Transaction exceeded maximum operations limit: ${maxOperations}`)
+      }
+
+      // Capture after state for audit trail
+      if (captureState && this.isWriteOperation(cypher)) {
+        const parameters = Array.isArray(params) ? this.convertParams(params) : (params || {})
+        const analysis = this.analyzeQueryForStateCapture(cypher, parameters)
+
+        if (analysis.matchClause) {
+          afterState = await this.captureNodesState(analysis.matchClause, parameters)
+          console.log(`📸 Captured after state: ${afterState?.length || 0} entities`)
+        }
+      }
+
+      // Commit transaction
+      await this.commit()
+      console.log(`✅ Committed transaction: ${transactionId}`)
+
+      return {
+        ...result,
+        beforeState,
+        afterState,
+        transactionId
+      }
+
+    } catch (error) {
+      // Rollback on any error
+      try {
+        if (this._inTransaction) {
+          await this.rollback()
+          console.log(`🔄 Rolled back transaction: ${transactionId}`)
+        }
+      } catch (rollbackError) {
+        console.error('❌ Rollback failed:', rollbackError)
+      }
+
+      throw error
+    }
+  }
+
+  /**
+   * Execute multiple write operations in a single transaction
+   */
+  async executeBatchWriteOperations<T = any>(
+    operations: Array<{
+      cypher: string;
+      params?: any[] | Record<string, any>;
+      captureState?: boolean;
+    }>,
+    options: {
+      maxOperationsPerTransaction?: number;
+      timeoutMs?: number;
+      stopOnFirstError?: boolean;
+    } = {}
+  ): Promise<{
+    success: boolean;
+    results: Array<QueryResult<T> & { beforeState?: any; afterState?: any }>;
+    transactionId: string;
+    operationsCompleted: number;
+    error?: string;
+  }> {
+    const transactionId = `batch_tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const maxOperations = options.maxOperationsPerTransaction || 1000
+    const timeoutMs = options.timeoutMs || 60000
+    const stopOnFirstError = options.stopOnFirstError !== false
+
+    const results: Array<QueryResult<T> & { beforeState?: any; afterState?: any }> = []
+    let operationsCompleted = 0
+
+    try {
+      // Validate batch size
+      if (operations.length > maxOperations) {
+        throw new Error(`Batch size ${operations.length} exceeds maximum allowed operations: ${maxOperations}`)
+      }
+
+      // Begin transaction
+      await this.beginTransaction()
+      console.log(`🔄 Started batch transaction: ${transactionId} with ${operations.length} operations`)
+
+      // Set overall timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Batch transaction timeout')), timeoutMs)
+      })
+
+      // Execute all operations within the transaction
+      const batchPromise = async () => {
+        for (let i = 0; i < operations.length; i++) {
+          const operation = operations[i]
+          let beforeState: any = null
+          let afterState: any = null
+
+          try {
+            // Capture before state if requested
+            if (operation.captureState !== false) {
+              const parameters = Array.isArray(operation.params)
+                ? this.convertParams(operation.params)
+                : (operation.params || {})
+              const analysis = this.analyzeQueryForStateCapture(operation.cypher, parameters)
+
+              if (analysis.needsStateCapture && analysis.matchClause) {
+                beforeState = await this.captureNodesState(analysis.matchClause, parameters)
+              }
+            }
+
+            // Execute operation
+            const result = await this.query<T>(operation.cypher, operation.params)
+
+            if (!result.success) {
+              if (stopOnFirstError) {
+                throw new Error(`Operation ${i + 1} failed: ${result.error}`)
+              }
+              console.warn(`⚠️ Operation ${i + 1} failed (continuing): ${result.error}`)
+            }
+
+            // Capture after state if this was a write operation
+            if (operation.captureState !== false && this.isWriteOperation(operation.cypher)) {
+              const parameters = Array.isArray(operation.params)
+                ? this.convertParams(operation.params)
+                : (operation.params || {})
+              const analysis = this.analyzeQueryForStateCapture(operation.cypher, parameters)
+
+              if (analysis.matchClause) {
+                afterState = await this.captureNodesState(analysis.matchClause, parameters)
+              }
+            }
+
+            results.push({
+              ...result,
+              beforeState,
+              afterState
+            })
+
+            operationsCompleted++
+
+          } catch (operationError) {
+            if (stopOnFirstError) {
+              throw operationError
+            }
+            console.warn(`⚠️ Operation ${i + 1} error (continuing):`, operationError)
+            results.push({
+              success: false,
+              data: [],
+              affected: 0,
+              error: operationError instanceof Error ? operationError.message : 'Unknown error',
+              beforeState,
+              afterState
+            } as QueryResult<T> & { beforeState?: any; afterState?: any })
+          }
+        }
+      }
+
+      await Promise.race([batchPromise(), timeoutPromise])
+
+      // Commit transaction
+      await this.commit()
+      console.log(`✅ Committed batch transaction: ${transactionId}, completed ${operationsCompleted}/${operations.length} operations`)
+
+      return {
+        success: true,
+        results,
+        transactionId,
+        operationsCompleted
+      }
+
+    } catch (error) {
+      // Rollback on any error
+      try {
+        if (this._inTransaction) {
+          await this.rollback()
+          console.log(`🔄 Rolled back batch transaction: ${transactionId}`)
+        }
+      } catch (rollbackError) {
+        console.error('❌ Batch rollback failed:', rollbackError)
+      }
+
+      return {
+        success: false,
+        results,
+        transactionId,
+        operationsCompleted,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }
+  }
+
+  /**
+   * Enhanced rollback with audit logging
+   */
+  async rollbackWithAudit(reason?: string, transactionId?: string): Promise<void> {
+    try {
+      await this.rollback()
+
+      console.log(`🔄 Transaction rolled back: ${transactionId || 'unknown'}${reason ? ` - ${reason}` : ''}`)
+
+      // TODO: Add audit logging for rollback
+      // This will be implemented when we integrate the audit logger with connection layer
+
+    } catch (error) {
+      console.error('❌ Enhanced rollback failed:', error)
+      throw error
+    }
   }
 }

@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
+    "migrate:audit": "node scripts/migrate-audit-tables.js",
     "test:prod": "node scripts/test-mcp.js --url=${MCP_PROD_URL:-https://industrial-mcp-delta.vercel.app} --api-key=${API_KEY} --mac=${MAC_ADDRESS} --verbose=false",
     "deploy:preview": "vercel --env NODE_ENV=development",
     "deploy:prod": "vercel --prod"
@@ -26,7 +27,7 @@
   "license": "MIT",
   "dependencies": {
     "@google-cloud/cloud-sql-connector": "^1.8.2",
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/sdk": "^1.19.1",
     "@upstash/redis": "^1.35.3",
     "@vercel/mcp-adapter": "1.0.0",
     "jose": "^6.0.12",

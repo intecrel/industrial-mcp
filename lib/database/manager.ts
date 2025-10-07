@@ -337,42 +337,60 @@ export class DatabaseManager {
           secureProtocol: 'TLSv1_2_method' // Security: Force TLS 1.2+
         }
       }
-      
+
       // Security: Log masked connection info
       console.log(`🔒 Cloud SQL configuration: ${secrets.getMaskedConnectionString(`mysql://${cloudSQLConfig.username}@${cloudSQLConfig.host}:${cloudSQLConfig.port}`)}`)
 
-      // Primary database (configure via environment variable)
-      if (process.env.CLOUD_SQL_DB_PRIMARY) {
-        connections.cloud_sql_primary = {
-          type: 'mysql',
-          ...cloudSQLConfig,
-          database: process.env.CLOUD_SQL_DB_PRIMARY
+      // Environment-aware database selection with fallback
+      const isProduction = process.env.VERCEL_ENV === 'production' ||
+                           process.env.NODE_ENV === 'production'
+
+      let database: string | undefined
+      if (isProduction) {
+        // Production: prefer PRIMARY, fallback to STAGING for backward compatibility
+        database = process.env.CLOUD_SQL_DB_PRIMARY || process.env.CLOUD_SQL_DB_STAGING
+        if (database) {
+          console.log(`🔒 Cloud SQL database (PRODUCTION): ${database}`)
+        }
+      } else {
+        // Preview/Development: prefer STAGING, fallback to PRIMARY
+        database = process.env.CLOUD_SQL_DB_STAGING || process.env.CLOUD_SQL_DB_PRIMARY
+        if (database) {
+          console.log(`🔒 Cloud SQL database (STAGING): ${database}`)
         }
       }
 
-      // Staging database (configure via environment variable)
-      if (process.env.CLOUD_SQL_DB_STAGING) {
-        connections.cloud_sql_staging = {
+      // Create connection if database is configured
+      if (database) {
+        connections.cloud_sql = {
           type: 'mysql',
           ...cloudSQLConfig,
-          database: process.env.CLOUD_SQL_DB_STAGING,
-          maxConnections: 3 // Lower connection limit for staging
+          database: database
         }
+      } else {
+        console.warn('⚠️ Cloud SQL configured but no database name provided (CLOUD_SQL_DB_PRIMARY or CLOUD_SQL_DB_STAGING)')
       }
     }
 
     // Cloud SQL Connector support with enhanced security (Serverless/Unix socket)
     if (process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME && !process.env.CLOUD_SQL_HOST) {
+      // Environment-aware database selection
+      const isProduction = process.env.VERCEL_ENV === 'production' ||
+                           process.env.NODE_ENV === 'production'
+      const database = isProduction
+        ? (secrets.getSecret('CLOUD_SQL_DB_PRIMARY') || secrets.getSecret('CLOUD_SQL_DB_STAGING'))
+        : (secrets.getSecret('CLOUD_SQL_DB_STAGING') || secrets.getSecret('CLOUD_SQL_DB_PRIMARY'))
+
       connections.cloudsql_connector = {
         type: 'mysql',
-        database: secrets.getSecret('CLOUD_SQL_DATABASE_NAME') || 'mcp_database',
+        database: database || 'mcp_database',
         username: secrets.getSecret('CLOUD_SQL_USERNAME') || 'root',
         password: secrets.getSecret('CLOUD_SQL_PASSWORD'),
         ssl: false, // Cloud SQL Connector handles encryption
         maxConnections: parseInt(process.env.CLOUD_SQL_MAX_CONNECTIONS || '5', 10),
         timeout: parseInt(process.env.CLOUD_SQL_TIMEOUT || '30000', 10)
       }
-      
+
       // Security: Log masked connection info
       const instanceName = process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME
       console.log(`🔒 Cloud SQL Connector: ${instanceName} (IAM authenticated)`)
@@ -380,12 +398,10 @@ export class DatabaseManager {
 
     // Determine default connection based on environment
     let defaultConnection = process.env.DEFAULT_DATABASE || 'neo4j'
-    
-    // Auto-select primary database if available
-    if (connections.cloud_sql_primary && process.env.NODE_ENV === 'production') {
-      defaultConnection = 'cloud_sql_primary'
-    } else if (connections.cloud_sql_staging && process.env.NODE_ENV !== 'production') {
-      defaultConnection = 'cloud_sql_staging'
+
+    // Auto-select Cloud SQL if available
+    if (connections.cloud_sql) {
+      defaultConnection = 'cloud_sql'
     } else if (connections.mysql && process.env.NODE_ENV !== 'production') {
       // Use local MySQL connection in development
       defaultConnection = 'mysql'

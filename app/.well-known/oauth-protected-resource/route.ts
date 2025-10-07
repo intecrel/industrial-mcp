@@ -42,15 +42,16 @@ export async function GET() {
       // Response types supported (standard)
       response_types_supported: ['code'],
       
-      // Grant types supported (standard) 
+      // Grant types supported (MCP 2025-06-18 requires refresh_token)
       grant_types_supported: [
         'authorization_code',
+        'refresh_token',
         'client_credentials'
       ],
       
       // MCP-specific extensions (non-standard but clearly marked)
       mcp_extensions: {
-        protocol_version: '2025-03-26',
+        protocol_version: '2025-06-18',
         server_info: {
           name: 'Industrial MCP Server',
           version: '2.0.0'

@@ -21,9 +21,10 @@ export async function GET() {
       // Supported response types (OAuth 2.1)
       response_types_supported: ['code'],
       
-      // Supported grant types
+      // Supported grant types (MCP 2025-06-18 requires refresh_token)
       grant_types_supported: [
         'authorization_code',
+        'refresh_token',
         'client_credentials'
       ],
       

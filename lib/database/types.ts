@@ -34,24 +34,27 @@ export interface QueryResult<T = any> {
 export interface DatabaseConnection {
   readonly type: DatabaseType
   readonly isConnected: boolean
-  
+
   connect(): Promise<void>
   disconnect(): Promise<void>
-  
+
   // Raw query execution
   query<T = any>(query: string, params?: any[] | Record<string, any>): Promise<QueryResult<T>>
-  
+
   // Transaction support
   beginTransaction(): Promise<void>
   commit(): Promise<void>
   rollback(): Promise<void>
-  
+
   // Health check
   ping(): Promise<boolean>
-  
+
   // Schema operations
   createTable?(schema: TableSchema): Promise<void>
   dropTable?(tableName: string): Promise<void>
+
+  // Raw connection/pool access (MySQL-specific)
+  getPool?(): any
 }
 
 export interface TableSchema {

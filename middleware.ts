@@ -49,8 +49,8 @@ export default withAuth(
     }
 
     // Protected routes that require authentication
-    const protectedPaths = ['/dashboard', '/profile', '/devices']
-    const isProtectedPath = protectedPaths.some(path => 
+    const protectedPaths = ['/dashboard', '/profile', '/devices', '/audit']
+    const isProtectedPath = protectedPaths.some(path =>
       request.nextUrl.pathname.startsWith(path)
     )
 
@@ -108,8 +108,8 @@ export default withAuth(
         }
 
         // For protected paths, require token
-        const protectedPaths = ['/dashboard', '/profile', '/devices']
-        const isProtectedPath = protectedPaths.some(path => 
+        const protectedPaths = ['/dashboard', '/profile', '/devices', '/audit']
+        const isProtectedPath = protectedPaths.some(path =>
           req.nextUrl.pathname.startsWith(path)
         )
 
