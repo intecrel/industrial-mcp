@@ -457,13 +457,14 @@ export class Neo4jConnection extends BaseDatabaseConnection {
 
     // For SET operations, we need to capture before state
     if (upperQuery.includes('SET ')) {
-      // Extract MATCH clause for state capture
-      const matchMatch = cypher.match(/^\s*(MATCH\s+[^(SET|WHERE)]*)/i)
+      // Extract MATCH clause for state capture (everything before SET/WHERE)
+      // Use proper lookahead to stop before SET or WHERE keywords
+      const matchMatch = cypher.match(/^\s*(MATCH\s+.+?)(?=\s+(?:SET|WHERE|RETURN|WITH|DELETE|REMOVE|$))/i)
       if (matchMatch) {
         return {
           needsStateCapture: true,
           captureStrategy: 'nodes',
-          matchClause: matchMatch[1]
+          matchClause: matchMatch[1].trim()
         }
       }
     }
