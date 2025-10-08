@@ -301,11 +301,23 @@ export class AuditStorageManager {
     auditBatch.events.push(storedEvent)
     auditBatch.size += JSON.stringify(storedEvent).length
 
-    // Immediate flush for high-risk or critical events
+    // Detect serverless environment (Vercel, AWS Lambda, etc.)
+    const isServerless = process.env.VERCEL === '1' ||
+                         process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined ||
+                         process.env.FUNCTION_NAME !== undefined // Google Cloud Functions
+
+    // Check if this is a write operation (CREATE, MERGE, SET)
+    const isWriteOperation = event.event_type?.includes('create') ||
+                             event.event_type?.includes('merge') ||
+                             event.event_type?.includes('set') ||
+                             event.event_type?.toLowerCase().includes('write')
+
+    // Immediate flush for high-risk or critical events, OR write operations in serverless
     const shouldFlushImmediately =
       event.risk_level === 'high' ||
       event.risk_level === 'critical' ||
-      event.result === 'failure'
+      event.result === 'failure' ||
+      (isServerless && isWriteOperation) // CRITICAL: Serverless functions terminate immediately
 
     // Check batch age (serverless functions may terminate before timer fires)
     const batchAge = Date.now() - auditBatch.createdAt
@@ -318,7 +330,10 @@ export class AuditStorageManager {
         auditBatch.size > 1024 * 1024) { // 1MB batch size limit
 
       if (shouldFlushImmediately) {
-        console.log(`🚨 Immediate flush triggered: ${event.risk_level} risk event`)
+        const reason = (isServerless && isWriteOperation)
+          ? `${event.event_type} in serverless`
+          : `${event.risk_level} risk event`
+        console.log(`🚨 Immediate flush triggered: ${reason}`)
       } else if (shouldFlushByAge) {
         console.log(`⏰ Batch age flush triggered: ${batchAge}ms >= ${this.config.flushIntervalMs}ms`)
       }
