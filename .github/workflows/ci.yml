@@ -14,13 +14,59 @@ permissions:
   issues: write
 
 jobs:
-  test:
+  # Security scanning job - runs in parallel with tests
+  security:
     runs-on: ubuntu-latest
-    name: Test and Lint
-    
+    name: Security Audit
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Audit dependencies for vulnerabilities
+      run: npm audit --audit-level=moderate
+      continue-on-error: true
+
+    - name: Check for hardcoded secrets
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: ${{ github.event.repository.default_branch }}
+        head: HEAD
+      continue-on-error: true
+
+  test:
+    runs-on: ubuntu-latest
+    name: Test and Lint
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for branch comparison
+
+    - name: Check branch is up-to-date with main
+      if: github.event_name == 'pull_request'
+      run: |
+        echo "🔍 Checking if PR branch is up-to-date with main..."
+        git fetch origin main
+        if ! git merge-base --is-ancestor origin/main HEAD; then
+          echo "❌ Branch is behind main. Please sync your branch:"
+          echo "   git checkout ${{ github.head_ref }}"
+          echo "   git pull origin main --no-rebase"
+          echo "   git push origin ${{ github.head_ref }}"
+          exit 1
+        fi
+        echo "✅ Branch is up-to-date with main"
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -41,34 +87,44 @@ jobs:
       run: npm run build
 
     - name: Run MCP tests
+      env:
+        CI_TEST_API_KEY: ${{ secrets.CI_TEST_API_KEY || 'test-key' }}
+        CI_TEST_MAC: ${{ secrets.CI_TEST_MAC || '84:94:37:e4:24:88' }}
       run: |
         # Start the dev server in background
         npm run dev &
         DEV_PID=$!
-        
-        # Wait for server to start
+
+        # Dynamic health check with timeout
         echo "Waiting for server to start..."
-        sleep 20
-        
-        # Test that server is responding
-        for i in {1..10}; do
-          if curl -f http://localhost:3000/api/verify/status; then
-            echo "Server is responding!"
+        MAX_ATTEMPTS=30
+        for i in $(seq 1 $MAX_ATTEMPTS); do
+          if curl -f http://localhost:3000/api/verify/status 2>/dev/null; then
+            echo "✅ Server is responding! (attempt $i/$MAX_ATTEMPTS)"
             break
           fi
-          echo "Attempt $i: Server not ready yet, waiting..."
-          sleep 5
+          if [ $i -eq $MAX_ATTEMPTS ]; then
+            echo "❌ Server failed to start after $MAX_ATTEMPTS attempts"
+            kill $DEV_PID || true
+            exit 1
+          fi
+          echo "⏳ Attempt $i/$MAX_ATTEMPTS: Server not ready yet, waiting..."
+          sleep 2
         done
-        
-        # Run basic MCP tests (skip database tests in CI)
-        node scripts/test-mcp.js --url=http://localhost:3000 --api-key=test-key --mac=84:94:37:e4:24:88 --verbose=false || echo "⚠️ MCP tests completed with issues - this is expected in CI environment"
-        
+
+        # Run basic MCP tests with environment credentials
+        node scripts/test-mcp.js \
+          --url=http://localhost:3000 \
+          --api-key="$CI_TEST_API_KEY" \
+          --mac="$CI_TEST_MAC" \
+          --verbose=false || echo "⚠️ MCP tests completed with issues - this is expected in CI environment"
+
         # Kill the dev server
         kill $DEV_PID || echo "Dev server already stopped"
 
   # Preview deployment for non-main branches and PRs
   deploy-preview:
-    needs: test
+    needs: [test, security]
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/main' || github.event_name == 'pull_request'
     name: Deploy Preview
@@ -136,7 +192,7 @@ jobs:
 
   # Production deployment for main branch
   deploy:
-    needs: test
+    needs: [test, security]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     name: Deploy to Production
@@ -162,9 +218,27 @@ jobs:
         vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
         vercel-args: '--prod'
 
+    - name: Wait for production deployment health check
+      run: |
+        echo "🔍 Checking production deployment health..."
+        PROD_URL="https://industrial-mcp-delta.vercel.app"
+        MAX_ATTEMPTS=30
+
+        for i in $(seq 1 $MAX_ATTEMPTS); do
+          if curl -f "$PROD_URL/api/verify/status" 2>/dev/null; then
+            echo "✅ Production deployment is healthy! (attempt $i/$MAX_ATTEMPTS)"
+            break
+          fi
+          if [ $i -eq $MAX_ATTEMPTS ]; then
+            echo "❌ Production deployment health check failed after $MAX_ATTEMPTS attempts"
+            exit 1
+          fi
+          echo "⏳ Attempt $i/$MAX_ATTEMPTS: Deployment not ready yet, waiting..."
+          sleep 5
+        done
+
     - name: Test production deployment
       run: |
-        sleep 30  # Wait for deployment to be ready
         MCP_PROD_URL=https://industrial-mcp-delta.vercel.app \
         API_KEY=${{ secrets.PROD_API_KEY }} \
         MAC_ADDRESS=${{ secrets.PROD_MAC_ADDRESS }} \
