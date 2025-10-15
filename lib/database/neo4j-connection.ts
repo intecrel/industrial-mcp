@@ -60,7 +60,9 @@ export class Neo4jConnection extends BaseDatabaseConnection {
       const securityStatus = isSecureConnection ? '🔒 Encrypted (SSL/TLS)' : '🔓 Unencrypted'
       console.log(`✅ Neo4j connected to ${this.maskConnectionString(uri)} - ${securityStatus}`)
     } catch (error) {
-      console.error('❌ Neo4j connection failed:', error)
+      if (process.env.NODE_ENV !== 'test') {
+        console.error('❌ Neo4j connection failed:', error)
+      }
       throw error
     }
   }

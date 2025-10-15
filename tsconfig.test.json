@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "esModuleInterop": true,
+    "types": ["jest", "node"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "strictPropertyInitialization": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": [
+    "__tests__/**/*.ts",
+    "__tests__/**/*.tsx"
+  ]
+  ,
+  "exclude": [
+    "node_modules",
+    "backup-complex-implementation"
+  ]
+}

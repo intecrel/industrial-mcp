@@ -86,7 +86,13 @@ jobs:
     - name: Build application
       run: npm run build
 
-    - name: Run MCP tests
+    - name: Run Jest unit tests
+      run: |
+        echo "🧪 Running MCP-focused test suite..."
+        npm test -- --coverage --verbose
+        echo "✅ Unit tests completed"
+
+    - name: Run MCP integration tests
       env:
         CI_TEST_API_KEY: ${{ secrets.CI_TEST_API_KEY || 'test-key' }}
         CI_TEST_MAC: ${{ secrets.CI_TEST_MAC || '84:94:37:e4:24:88' }}

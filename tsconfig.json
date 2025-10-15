@@ -36,6 +36,7 @@
   ],
   "exclude": [
     "node_modules",
-    "backup-complex-implementation"
+    "backup-complex-implementation",
+    "__tests__"
   ]
 }
