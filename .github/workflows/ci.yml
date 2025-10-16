@@ -95,7 +95,6 @@ jobs:
     - name: Run MCP integration tests
       env:
         CI_TEST_API_KEY: ${{ secrets.CI_TEST_API_KEY || 'test-key' }}
-        CI_TEST_MAC: ${{ secrets.CI_TEST_MAC || '84:94:37:e4:24:88' }}
       run: |
         # Start the dev server in background
         npm run dev &
@@ -122,7 +121,6 @@ jobs:
         node scripts/test-mcp.js \
           --url=http://localhost:3000 \
           --api-key="$CI_TEST_API_KEY" \
-          --mac="$CI_TEST_MAC" \
           --verbose=false || echo "⚠️ MCP tests completed with issues - this is expected in CI environment"
 
         # Kill the dev server
@@ -247,7 +245,6 @@ jobs:
       run: |
         MCP_PROD_URL=https://industrial-mcp-delta.vercel.app \
         API_KEY=${{ secrets.PROD_API_KEY }} \
-        MAC_ADDRESS=${{ secrets.PROD_MAC_ADDRESS }} \
         npm run test:prod
 
     - name: Update deployment status

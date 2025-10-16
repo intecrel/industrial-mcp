@@ -183,16 +183,6 @@ export class DatabaseSecurityValidator {
       recommendation: hasApiKey ? undefined : 'Configure API_KEY or MCP_API_KEYS for authentication'
     })
 
-    // MAC address verification
-    const hasMacVerification = !!process.env.MAC_ADDRESS
-    checks.push({
-      name: 'MAC Address Verification',
-      passed: hasMacVerification,
-      severity: 'high',
-      message: hasMacVerification ? 'MAC address verification enabled' : 'MAC address verification disabled',
-      recommendation: hasMacVerification ? undefined : 'Configure MAC_ADDRESS for device-based authentication'
-    })
-
     // Rate limiting configuration
     const hasRateLimiting = process.env.MCP_API_KEYS?.includes(':')
     checks.push({

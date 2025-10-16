@@ -113,7 +113,7 @@ async function handleRootGET(nextRequest: NextRequest): Promise<Response> {
       // Also support legacy API key method
       api_key: {
         enabled: true,
-        headers: ["x-api-key", "x-mac-address"]
+        headers: ["x-api-key"]
       }
     },
     
@@ -150,7 +150,7 @@ async function handleRootGET(nextRequest: NextRequest): Promise<Response> {
     // Discovery instructions for Claude.ai
     instructions: {
       oauth_flow: "Complete OAuth 2.1 flow at base URL, then use Bearer token at mcp_endpoints.primary",
-      api_key_fallback: "Alternatively, use x-api-key + x-mac-address headers directly at mcp endpoints"
+      api_key_fallback: "Alternatively, use x-api-key header directly at mcp endpoints"
     },
     
     timestamp: new Date().toISOString()

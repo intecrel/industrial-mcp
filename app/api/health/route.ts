@@ -42,7 +42,7 @@ export async function GET() {
       mcp: {
         tools_available: 18,
         transports: ['mcp', 'sse', 'stdio'],
-        auth_methods: ['oauth', 'mac_address'],
+        auth_methods: ['oauth', 'api_key'],
         token_ttl: '24h'
       }
     };

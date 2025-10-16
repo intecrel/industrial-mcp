@@ -29,9 +29,6 @@ export default withAuth(
     const token = request.nextauth.token
     const hasAuth0Session = !!token
 
-    // Check legacy MAC verification
-    const isLegacyVerified = request.cookies.get('mcp-verified')?.value === 'true'
-    
     // Check for OAuth Bearer token (for Claude.ai and other OAuth clients)
     const authHeader = request.headers.get('authorization')
     const hasBearer = authHeader && authHeader.startsWith('Bearer ')
@@ -64,21 +61,14 @@ export default withAuth(
       return NextResponse.next()
     }
 
-    // For home page, allow access with either Auth0 session or legacy verification
+    // For home page, redirect authenticated users to dashboard
     if (request.nextUrl.pathname === '/') {
       if (hasAuth0Session) {
         // User has Auth0 session, redirect to dashboard
         return NextResponse.redirect(new URL('/dashboard', request.url))
-      } else if (!isLegacyVerified) {
-        // No Auth0 session and not legacy verified, show home page
-        return NextResponse.next()
       }
+      // Show home page for unauthenticated users
       return NextResponse.next()
-    }
-
-    // For other paths, maintain legacy behavior
-    if (!isLegacyVerified && !hasAuth0Session) {
-      return NextResponse.redirect(new URL('/', request.url))
     }
 
     return NextResponse.next()

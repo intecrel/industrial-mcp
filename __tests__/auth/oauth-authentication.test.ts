@@ -41,16 +41,15 @@ describe('OAuth 2.1 Authentication', () => {
       expect(method).toBe('none');
     });
 
-    it('should detect MAC address method when both x-api-key and x-mac-address present', () => {
+    it('should detect API key method when x-api-key header present', () => {
       const request = new NextRequest('http://localhost:3000/api/mcp', {
         headers: {
-          'x-api-key': 'test-key',
-          'x-mac-address': '00:11:22:33:44:55'
+          'x-api-key': 'test-key'
         }
       });
 
       const method = detectAuthMethod(request);
-      expect(method).toBe('mac_address');
+      expect(method).toBe('api_key');
     });
   });
 
@@ -262,10 +261,10 @@ describe('OAuth 2.1 Authentication', () => {
       expect(hasAccess).toBe(false);
     });
 
-    it('should grant full access for MAC address authentication', () => {
+    it('should grant full access for API key authentication', () => {
       const authContext: AuthContext = {
-        method: 'mac_address',
-        userId: 'device:test-device',
+        method: 'api_key',
+        userId: 'api-key-user',
         permissions: ['*']
       };
 

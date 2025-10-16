@@ -195,13 +195,18 @@ export class DatabaseManager {
 
     // Attempt to use Cloud SQL Connector first (tests mock this and expect it to be called)
     try {
-      // Import Connector dynamically so tests can mock the module
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { Connector } = require('@google-cloud/cloud-sql-connector')
+      // Dynamically import the Cloud SQL Connector to satisfy lint rules and allow mocking in tests
+      const cloudSqlModule = await import('@google-cloud/cloud-sql-connector')
+      const Connector = (cloudSqlModule as any).Connector || (cloudSqlModule as any).default?.Connector
+      if (!Connector) {
+        throw new Error('Cloud SQL Connector not available')
+      }
       const connector = new Connector()
 
       // Try to get options (tests may mock getOptions to throw to simulate failure)
-      await connector.getOptions({ instanceConnectionName: process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME || '' })
+      if (typeof connector.getOptions === 'function') {
+        await connector.getOptions({ instanceConnectionName: process.env.CLOUD_SQL_INSTANCE_CONNECTION_NAME || '' })
+      }
     } catch (err: any) {
       // If the connector explicitly failed, propagate a descriptive error to satisfy tests
       throw new Error('Cloud SQL connection failed')

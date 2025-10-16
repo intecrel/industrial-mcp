@@ -12,7 +12,7 @@ const fetch = globalThis.fetch;
 const config = {
   previewUrl: process.env.VERCEL_URL || process.argv[2],
   apiKey: process.env.API_KEY || process.argv[3],
-  macAddress: process.env.MAC_ADDRESS || '00:15:5d:77:c8:ae',
+  macAddress: process.env.MAC_ADDRESS || null,
   verbose: process.env.VERBOSE === 'true' || process.argv.includes('--verbose')
 };
 

@@ -21,7 +21,7 @@ Configure these secrets in your GitHub repository settings:
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
 | `API_KEY` | MCP API authentication key | `industrial-mcp-2024-secure-key-xyz789` |
-| `MAC_ADDRESS` | Authorized device MAC address | `84:94:37:e4:24:88` |
+| `MAC_ADDRESS` | (deprecated) Device MAC address — prefer `PROD_API_KEY` or OAuth | `84:94:37:e4:24:88` |
 
 ### Optional Secrets
 

@@ -86,10 +86,10 @@ export async function GET(request: NextRequest) {
         requires_bearer_token: true,
         bearer_token_endpoint: `${baseUrl}/api/mcp`
       },
-      // Also support legacy API key method
+      // Also support API key authentication
       api_key: {
         enabled: true,
-        headers: ["x-api-key", "x-mac-address"]
+        headers: ["x-api-key"]
       }
     },
     
@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
     // Discovery instructions for Claude.ai
     instructions: {
       oauth_flow: "Complete OAuth 2.1 flow at base URL, then use Bearer token at mcp_endpoints.primary",
-      api_key_fallback: "Alternatively, use x-api-key + x-mac-address headers directly at mcp endpoints"
+      api_key_fallback: "Alternatively, use x-api-key header directly at mcp endpoints"
     },
     
     timestamp: new Date().toISOString()

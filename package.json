@@ -16,7 +16,7 @@
     "test:api": "jest __tests__/api",
     "test:database": "jest __tests__/database",
     "migrate:audit": "node scripts/migrate-audit-tables.js",
-    "test:prod": "node scripts/test-mcp.js --url=${MCP_PROD_URL:-https://industrial-mcp-delta.vercel.app} --api-key=${API_KEY} --mac=${MAC_ADDRESS} --verbose=false",
+    "test:prod": "node scripts/test-mcp.js --url=${MCP_PROD_URL:-https://industrial-mcp-delta.vercel.app} --api-key=${API_KEY} --verbose=false",
     "deploy:preview": "vercel --env NODE_ENV=development",
     "deploy:prod": "vercel --prod"
   },
