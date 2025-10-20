@@ -104,7 +104,7 @@ jobs:
         echo "Waiting for server to start..."
         MAX_ATTEMPTS=30
         for i in $(seq 1 $MAX_ATTEMPTS); do
-          if curl -f http://localhost:3000/api/verify/status 2>/dev/null; then
+          if curl -f http://localhost:3000/api/health 2>/dev/null; then
             echo "✅ Server is responding! (attempt $i/$MAX_ATTEMPTS)"
             break
           fi
@@ -229,7 +229,7 @@ jobs:
         MAX_ATTEMPTS=30
 
         for i in $(seq 1 $MAX_ATTEMPTS); do
-          if curl -f "$PROD_URL/api/verify/status" 2>/dev/null; then
+          if curl -f "$PROD_URL/api/health" 2>/dev/null; then
             echo "✅ Production deployment is healthy! (attempt $i/$MAX_ATTEMPTS)"
             break
           fi
