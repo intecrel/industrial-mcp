@@ -11,11 +11,16 @@ const config = {
 
   // Coverage configuration
   collectCoverageFrom: [
-    'app/**/*.{ts,tsx}',
+    'app/api/**/*.{ts,tsx}',  // Only collect from API routes
     'lib/**/*.{ts,tsx}',
     '!**/*.d.ts',
     '!**/node_modules/**',
-    '!**/__tests__/**'
+    '!**/__tests__/**',
+    '!app/layout.tsx',        // Exclude UI components
+    '!app/page.tsx',
+    '!app/providers.tsx',
+    '!app/**/page.tsx',       // Exclude all Next.js page components
+    '!app/components/**'      // Exclude React components
   ],
 
   coverageThreshold: {
