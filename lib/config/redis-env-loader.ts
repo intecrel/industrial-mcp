@@ -9,6 +9,26 @@ let cacheTimestamp: number = 0;
 const CACHE_TTL = 300000; // 5 minutes
 
 /**
+ * Determine the Redis key prefix based on environment
+ */
+function getEnvPrefix(): string {
+  // Check VERCEL_ENV first (set by Vercel)
+  const vercelEnv = process.env.VERCEL_ENV;
+
+  if (vercelEnv === 'production') {
+    return 'prod:env:';
+  } else if (vercelEnv === 'preview') {
+    return 'preview:env:';
+  } else if (process.env.NODE_ENV === 'production') {
+    // Fallback to prod if NODE_ENV is production but VERCEL_ENV not set
+    return 'prod:env:';
+  }
+
+  // Local development
+  return 'local:env:';
+}
+
+/**
  * Load all environment variables from Redis
  */
 export async function loadEnvFromRedis(): Promise<Record<string, string>> {
@@ -25,9 +45,12 @@ export async function loadEnvFromRedis(): Promise<Record<string, string>> {
     return {};
   }
 
+  const envPrefix = getEnvPrefix();
+  console.log(`🔍 Loading environment variables with prefix: ${envPrefix}`);
+
   try {
-    // Get all keys with prefix prod:env:
-    const keysResponse = await fetch(`${redisUrl}/keys/prod:env:*`, {
+    // Get all keys with environment-specific prefix
+    const keysResponse = await fetch(`${redisUrl}/keys/${envPrefix}*`, {
       headers: {
         'Authorization': `Bearer ${redisToken}`
       }
@@ -57,7 +80,7 @@ export async function loadEnvFromRedis(): Promise<Record<string, string>> {
         }
 
         const data = await response.json();
-        const envKey = key.replace('prod:env:', '');
+        const envKey = key.replace(envPrefix, '');
         return { key: envKey, value: data.result };
       })
     );
