@@ -13,7 +13,6 @@ const { URL } = require('url');
 const CONFIG = {
   SERVER_URL: process.env.TEST_SERVER_URL || 'http://localhost:3000',
   API_KEY: process.env.API_KEY,
-  MAC_ADDRESS: process.env.MAC_ADDRESS,
   VERBOSE: process.env.VERBOSE === 'true' || process.argv.includes('--verbose')
 };
 
@@ -21,12 +20,6 @@ const CONFIG = {
 if (!CONFIG.API_KEY) {
   console.error('❌ Missing required environment variable: API_KEY');
   console.error('   Please set API_KEY in your environment or .env file');
-  process.exit(1);
-}
-
-if (!CONFIG.MAC_ADDRESS) {
-  console.error('❌ Missing required environment variable: MAC_ADDRESS');
-  console.error('   Please set MAC_ADDRESS in your environment or .env file');
   process.exit(1);
 }
 
@@ -166,17 +159,16 @@ const tests = [
     }
   },
 
-  // Authentication tests
+  // API Key Authentication tests
   {
-    name: "MAC Address Authentication (MCP Tools List)",
+    name: "API Key Authentication (MCP Tools List)",
     test: async () => {
       const response = await makeRequest(`${CONFIG.SERVER_URL}/api/mcp`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json, text/event-stream',
-          'x-api-key': CONFIG.API_KEY,
-          'x-mac-address': CONFIG.MAC_ADDRESS
+          'x-api-key': CONFIG.API_KEY
         },
         body: {
           jsonrpc: '2.0',
@@ -184,7 +176,7 @@ const tests = [
           method: 'tools/list'
         }
       });
-      
+
       // Handle SSE response
       if (response.raw && response.raw.includes('event: message')) {
         const dataLine = response.raw.split('\n').find(line => line.startsWith('data: '));
@@ -198,15 +190,14 @@ const tests = [
   },
 
   {
-    name: "MAC Address Authentication (Echo Tool)",
+    name: "API Key Authentication (Echo Tool)",
     test: async () => {
       const response = await makeRequest(`${CONFIG.SERVER_URL}/api/mcp`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json, text/event-stream',
-          'x-api-key': CONFIG.API_KEY,
-          'x-mac-address': CONFIG.MAC_ADDRESS
+          'x-api-key': CONFIG.API_KEY
         },
         body: {
           jsonrpc: '2.0',
@@ -218,7 +209,7 @@ const tests = [
           }
         }
       });
-      
+
       // Handle SSE response
       if (response.raw && response.raw.includes('event: message')) {
         const dataLine = response.raw.split('\n').find(line => line.startsWith('data: '));
@@ -236,8 +227,7 @@ const tests = [
 async function runTests() {
   console.log('🚀 Starting Remote MCP Server Test Suite\n');
   console.log(`Server: ${CONFIG.SERVER_URL}`);
-  console.log(`API Key: ${CONFIG.API_KEY ? CONFIG.API_KEY.substring(0, 8) + '***' : 'NOT_SET'}`);
-  console.log(`MAC Address: ${CONFIG.MAC_ADDRESS}\n`);
+  console.log(`API Key: ${CONFIG.API_KEY ? CONFIG.API_KEY.substring(0, 8) + '***' : 'NOT_SET'}\n`);
 
   let passed = 0;
   let failed = 0;

@@ -5,7 +5,6 @@
  */
 
 type AuthConfig = {
-  MAC_ADDRESS: string
   ALLOWED_IPS: string[]
   BASE_URL: string
   API_KEY: string
@@ -40,9 +39,6 @@ function getEnv(
 }
 
 export const AUTH_CONFIG: AuthConfig = {
-  // Allow MAC address to be specified via env, fallback for dev.
-  MAC_ADDRESS: getEnv('MAC_ADDRESS', '84:94:37:e4:24:88', true),
-
   // Comma-separated list of IPs allowed to access protected routes.
   ALLOWED_IPS: (process.env.ALLOWED_IPS ?? '')
     .split(',')

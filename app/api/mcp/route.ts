@@ -60,7 +60,10 @@ export async function POST(request: NextRequest) {
           error: {
             code: -32001,
             message: "Authentication required",
-            data: createAuthError(errorMessage)
+            data: typeof createAuthError === 'function' ? createAuthError(errorMessage) : {
+              error: 'authentication_required',
+              message: errorMessage
+            }
           }
         }, {
           status: 401,

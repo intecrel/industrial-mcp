@@ -6,19 +6,10 @@ import { useSession, signOut } from 'next-auth/react'
 import { useFeatureFlags } from '@/hooks/useFeatureFlags'
 import MCPConnectionInfo from '@/app/components/MCPConnectionInfo'
 
-interface Device {
-  macAddress: string
-  deviceName: string
-  addedAt: string
-  lastUsed?: string
-  isActive: boolean
-}
-
 interface UserProfile {
   auth0Id: string
   email: string
   name: string
-  linkedDevices: Device[]
   tier: string
   usage: {
     monthlyRequests: number
@@ -29,8 +20,8 @@ interface UserProfile {
 
 /**
  * MCP Dashboard – provides connection status, system information
- * and the ability to log-out (clears the `mcp-verified` cookie).
- * Enhanced with Auth0 integration and device management.
+ * and the ability to log-out.
+ * Supports both OAuth and API key authentication.
  */
 export default function Dashboard() {
   const router = useRouter()
@@ -44,16 +35,9 @@ export default function Dashboard() {
   const [connected, setConnected] = useState(false)
   const [systemTime, setSystemTime] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  
+
   // Auth0 user data
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [devices, setDevices] = useState<Device[]>([])
-  
-  // Device management
-  const [showAddDevice, setShowAddDevice] = useState(false)
-  const [newDeviceName, setNewDeviceName] = useState('')
-  const [newMacAddress, setNewMacAddress] = useState('')
-  const [addingDevice, setAddingDevice] = useState(false)
 
   /* ------------------------------------------------------------------
    * EFFECT – auth check with Auth0 and legacy support
@@ -70,22 +54,13 @@ export default function Dashboard() {
             router.push('/auth/signin')
             return
           }
-          
+
           // Fetch Auth0 user data
           await fetchUserData()
         } else {
-          // Legacy mode - check verification cookie
-          const res = await fetch('/api/verify/status', {
-            credentials: 'include'
-          })
-          const data = await res.json()
-          setConnected(data.verified)
-          setSystemTime(new Date(data.timestamp).toLocaleString())
-
-          if (!data.verified) {
-            router.replace('/')
-            return
-          }
+          // Legacy mode - allow dashboard access
+          setConnected(true)
+          setSystemTime(new Date().toLocaleString())
         }
       } catch (e) {
         setError('Unable to confirm verification status.')
@@ -108,13 +83,6 @@ export default function Dashboard() {
         setProfile(profileData.profile)
       }
 
-      // Fetch devices
-      const devicesResponse = await fetch('/api/user/devices')
-      if (devicesResponse.ok) {
-        const devicesData = await devicesResponse.json()
-        setDevices(devicesData.devices)
-      }
-      
       setConnected(true)
       setSystemTime(new Date().toLocaleString())
     } catch (err) {
@@ -134,79 +102,11 @@ export default function Dashboard() {
         await signOut({ callbackUrl: '/' })
       } else {
         // Legacy logout
-        await fetch('/api/logout', { method: 'POST', credentials: 'include' })
         router.replace('/')
       }
     } catch (e) {
       // even if the request fails, continue with redirect
       router.replace('/')
-    }
-  }
-
-  const handleAddDevice = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!newDeviceName.trim() || !newMacAddress.trim()) {
-      setError('Please fill in all fields')
-      return
-    }
-
-    setAddingDevice(true)
-    setError(null)
-
-    try {
-      const response = await fetch('/api/user/devices', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          deviceName: newDeviceName.trim(),
-          macAddress: newMacAddress.trim(),
-        }),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Failed to add device')
-      }
-
-      // Refresh devices list
-      await fetchUserData()
-      
-      // Reset form
-      setNewDeviceName('')
-      setNewMacAddress('')
-      setShowAddDevice(false)
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add device')
-    } finally {
-      setAddingDevice(false)
-    }
-  }
-
-  const handleRemoveDevice = async (macAddress: string) => {
-    if (!confirm('Are you sure you want to unlink this device?')) {
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/user/devices?mac=${encodeURIComponent(macAddress)}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        const result = await response.json()
-        throw new Error(result.message || 'Failed to remove device')
-      }
-
-      // Refresh devices list
-      await fetchUserData()
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove device')
     }
   }
 
@@ -308,78 +208,20 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* LINKED DEVICES (if Auth0 enabled) */}
-        {hasAuth && (
-          <div className="bg-white rounded-lg shadow mb-6">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-medium text-gray-900">Linked Devices</h2>
-                <button
-                  onClick={() => setShowAddDevice(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                >
-                  Add Device
-                </button>
-              </div>
-
-              {devices.length === 0 ? (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-4">📱</div>
-                  <p className="text-gray-600 mb-4">No devices linked yet</p>
-                  <p className="text-sm text-gray-500">
-                    Link your MAC address to access MCP tools from your device
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {devices.map((device) => (
-                    <div key={device.macAddress} className="border rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-medium text-gray-900">{device.deviceName}</h3>
-                          <p className="text-sm text-gray-600 font-mono">{device.macAddress}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Added {new Date(device.addedAt).toLocaleDateString()}
-                            {device.lastUsed && ` • Last used ${new Date(device.lastUsed).toLocaleDateString()}`}
-                          </p>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                            device.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {device.isActive ? 'Active' : 'Inactive'}
-                          </span>
-                          <button
-                            onClick={() => handleRemoveDevice(device.macAddress)}
-                            className="text-red-600 hover:text-red-800 text-sm"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* MCP CONNECTION INFORMATION */}
         <MCPConnectionInfo className="mb-6" />
 
         {/* SYSTEM INFORMATION */}
         <div className="grid md:grid-cols-2 gap-6">
           <div className="bg-white rounded shadow p-6">
-            <h2 className="text-xl font-semibold mb-2">Verification URL</h2>
-            {/* window check ensures SSR safety */}
-            <p className="break-all text-sm text-gray-700">
-              {typeof window !== 'undefined'
-                ? `${window.location.origin}/api/verify`
-                : '/api/verify'}
+            <h2 className="text-xl font-semibold mb-2">Authentication</h2>
+            <p className="text-sm text-gray-700 mb-2">
+              {hasAuth ? 'OAuth 2.1 Authentication' : 'API Key Authentication'}
             </p>
-            <p className="text-xs text-gray-500 mt-2">
-              Used for MAC address verification
+            <p className="text-xs text-gray-500">
+              {hasAuth
+                ? 'Use Bearer tokens for secure API access'
+                : 'Use x-api-key header for server-to-server authentication'}
             </p>
           </div>
 
@@ -398,72 +240,6 @@ export default function Dashboard() {
           <p className="text-red-600 mt-6">{error}</p>
         )}
       </section>
-
-      {/* Add Device Modal */}
-      {hasAuth && showAddDevice && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-lg max-w-md w-full">
-            <form onSubmit={handleAddDevice} className="p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Link New Device</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Device Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newDeviceName}
-                    onChange={(e) => setNewDeviceName(e.target.value)}
-                    placeholder="e.g., My MacBook Pro"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    MAC Address
-                  </label>
-                  <input
-                    type="text"
-                    value={newMacAddress}
-                    onChange={(e) => setNewMacAddress(e.target.value)}
-                    placeholder="e.g., AA:BB:CC:DD:EE:FF"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
-                    required
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Format: AA:BB:CC:DD:EE:FF or AA-BB-CC-DD-EE-FF
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddDevice(false)
-                    setNewDeviceName('')
-                    setNewMacAddress('')
-                    setError(null)
-                  }}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addingDevice}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {addingDevice ? 'Adding...' : 'Add Device'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </main>
   )
 }

@@ -67,7 +67,6 @@ export class CORSManager {
             'Content-Type',
             'Authorization',
             'x-api-key',
-            'x-mac-address',
             'Accept',
             'Origin',
             'X-Requested-With',

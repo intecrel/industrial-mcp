@@ -43,10 +43,9 @@ export async function GET(request: NextRequest) {
               flow: "OAuth 2.1 with PKCE"
             },
             api_key: {
-              type: "API Key + MAC Address",
+              type: "API Key",
               headers: {
-                "x-api-key": "<your-api-key>",
-                "x-mac-address": "<your-mac-address>"
+                "x-api-key": "<your-api-key>"
               }
             }
           },
@@ -66,7 +65,6 @@ export async function GET(request: NextRequest) {
             MCP_SERVER_URL: `${config.issuer}/api/mcp`,
             MCP_OAUTH_TOKEN: "<oauth-token>", // OAuth option
             MCP_API_KEY: "<api-key>", // API key option
-            MCP_MAC_ADDRESS: "<mac-address>", // MAC address option
             DEBUG: "false"
           },
           clients: ["Claude Desktop", "MCP CLI Tools", "Local Applications"],
@@ -87,7 +85,7 @@ export async function GET(request: NextRequest) {
           },
           authentication: {
             oauth: "?token=<bearer-token>",
-            api_key: "?api_key=<key>&mac_address=<mac>"
+            api_key: "?api_key=<key>"
           },
           clients: ["Web Applications", "Streaming Clients"],
           pros: ["Real-time streaming", "HTTP-based", "Automatic reconnection"],

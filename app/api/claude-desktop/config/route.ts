@@ -28,7 +28,6 @@ export async function GET(request: NextRequest) {
           env: {
             MCP_SERVER_URL: `${config.issuer}/api/mcp`,
             MCP_API_KEY: authType === 'apikey' ? "YOUR_API_KEY_HERE" : undefined,
-            MCP_MAC_ADDRESS: authType === 'apikey' ? "YOUR_MAC_ADDRESS_HERE" : undefined,
             MCP_OAUTH_TOKEN: authType === 'oauth' ? "YOUR_ACCESS_TOKEN_HERE" : undefined,
             DEBUG: "false"
           },
@@ -40,8 +39,7 @@ export async function GET(request: NextRequest) {
             headers: authType === 'oauth' ? {
               "Authorization": "Bearer YOUR_ACCESS_TOKEN_HERE"
             } : {
-              "x-api-key": "YOUR_API_KEY_HERE", 
-              "x-mac-address": "YOUR_MAC_ADDRESS_HERE"
+              "x-api-key": "YOUR_API_KEY_HERE"
             }
           }
         }
@@ -78,9 +76,9 @@ export async function GET(request: NextRequest) {
             {
               step: 3,
               title: "Configure Authentication",
-              description: authType === 'oauth' ? 
+              description: authType === 'oauth' ?
                 "Set up OAuth 2.1 authentication with the provided endpoints" :
-                "Enter your API key and MAC address in the headers"
+                "Enter your API key in the x-api-key header"
             },
             {
               step: 4,
@@ -102,16 +100,14 @@ export async function GET(request: NextRequest) {
             "Authorize the connection with Industrial MCP Server",
             "Claude Desktop will automatically receive the access token"
           ]
-        } : {
-          type: "API Key + MAC Address",
+            } : {
+          type: "API Key",
           headers: {
-            "x-api-key": "Your API key from .env.local",
-            "x-mac-address": "Your device MAC address"
+            "x-api-key": "Your API key from .env.local"
           },
           instructions: [
             "Get your API key from the server administrator",
-            "Find your device MAC address",
-            "Add both to the MCP server configuration headers"
+            "Add the API key to the MCP server configuration headers"
           ]
         }
       },

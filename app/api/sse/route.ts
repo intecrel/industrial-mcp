@@ -12,26 +12,24 @@ export async function GET(request: NextRequest) {
   // Check for authentication via query params (for SSE compatibility)
   const token = searchParams.get('token');
   const apiKey = searchParams.get('api_key');
-  const macAddress = searchParams.get('mac_address');
-  
+
   try {
     // DISABLED: Authentication for Claude.ai SSE compatibility
     // Allow SSE connections without authentication for Claude.ai integration
     console.log(`🔓 SSE request allowed without authentication from ${request.headers.get('x-forwarded-for') || 'unknown'}`);
-    
+
     // Optional: Try to get auth context if available, but don't require it
     let authContext = null;
     try {
       const authHeaders = new Headers(request.headers);
-      
+
       if (token) {
         authHeaders.set('authorization', `Bearer ${token}`);
-      } else if (apiKey && macAddress) {
+      } else if (apiKey) {
         authHeaders.set('x-api-key', apiKey);
-        authHeaders.set('x-mac-address', macAddress);
       }
-      
-      if (token || (apiKey && macAddress)) {
+
+      if (token || apiKey) {
         const authRequest = new NextRequest(request.url, {
           method: request.method,
           headers: authHeaders,
@@ -177,9 +175,6 @@ export async function POST(request: NextRequest) {
         }),
         ...(request.headers.get('x-api-key') && {
           'x-api-key': request.headers.get('x-api-key')!
-        }),
-        ...(request.headers.get('x-mac-address') && {
-          'x-mac-address': request.headers.get('x-mac-address')!
         })
       },
       body: JSON.stringify(jsonRpcRequest)

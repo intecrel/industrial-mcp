@@ -50,9 +50,6 @@ export async function POST(request: NextRequest) {
         }),
         ...(request.headers.get('x-api-key') && {
           'x-api-key': request.headers.get('x-api-key')!
-        }),
-        ...(request.headers.get('x-mac-address') && {
-          'x-mac-address': request.headers.get('x-mac-address')!
         })
       },
       body: JSON.stringify(jsonRpcRequest)
@@ -132,7 +129,7 @@ export async function GET(request: NextRequest) {
       endpoint: `${request.nextUrl.origin}/api/stdio`,
       method: "POST",
       format: "JSON-RPC 2.0",
-      authentication: ["OAuth 2.1 Bearer Token", "API Key + MAC Address"],
+      authentication: ["OAuth 2.1 Bearer Token", "API Key"],
       timestamp: new Date().toISOString()
     }, {
       headers: {
