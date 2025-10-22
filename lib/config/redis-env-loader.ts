@@ -81,7 +81,15 @@ export async function loadEnvFromRedis(): Promise<Record<string, string>> {
 
         const data = await response.json();
         const envKey = key.replace(envPrefix, '');
-        return { key: envKey, value: data.result };
+
+        // Redis stores values as JSON strings, so we need to parse them
+        // e.g., "value" -> value (remove surrounding quotes)
+        let value = data.result;
+        if (typeof value === 'string' && value.startsWith('"') && value.endsWith('"')) {
+          value = value.slice(1, -1);
+        }
+
+        return { key: envKey, value };
       })
     );
 
