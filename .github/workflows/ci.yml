@@ -145,7 +145,13 @@ jobs:
 
     - name: Install dependencies for testing
       run: npm ci
-        
+
+    - name: Check environment variable size
+      run: |
+        echo "🔍 Checking environment variable size before preview deployment..."
+        node .github/scripts/env-size.js
+        echo "✅ Preview environment size check passed"
+
     - name: Deploy to Vercel Preview
       uses: amondnet/vercel-action@v25
       id: vercel-preview
@@ -213,6 +219,12 @@ jobs:
 
     - name: Install dependencies for testing
       run: npm ci
+
+    - name: Check environment variable size
+      run: |
+        echo "🔍 Checking environment variable size before production deployment..."
+        node .github/scripts/env-size.js
+        echo "✅ Environment size check passed"
 
     - name: Deploy to Vercel
       uses: amondnet/vercel-action@v25
