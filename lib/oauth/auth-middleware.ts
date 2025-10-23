@@ -68,8 +68,18 @@ export const authenticateApiKey = async (request: NextRequest): Promise<AuthCont
       throw new Error('Missing x-api-key header');
     }
 
-    // Validate API key
-    const primaryKey = process.env.API_KEY;
+    // Load API key from Redis if not in process.env
+    let primaryKey = process.env.API_KEY;
+    if (!primaryKey) {
+      // Try loading from Redis
+      try {
+        const { getEnv } = await import('../config/redis-env-loader');
+        primaryKey = await getEnv('API_KEY');
+      } catch (error) {
+        console.warn('⚠️ Failed to load API_KEY from Redis:', error);
+      }
+    }
+
     if (!primaryKey || apiKey !== primaryKey) {
       throw new Error('Invalid API key');
     }
