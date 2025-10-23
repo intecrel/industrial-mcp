@@ -89,6 +89,11 @@ export async function loadEnvFromRedis(): Promise<Record<string, string>> {
           value = value.slice(1, -1);
         }
 
+        // Trim whitespace and newlines from values
+        if (typeof value === 'string') {
+          value = value.trim();
+        }
+
         return { key: envKey, value };
       })
     );
