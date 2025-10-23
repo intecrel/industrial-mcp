@@ -6,6 +6,7 @@ A comprehensive **Model Context Protocol (MCP)** server designed for industrial 
 
 - **Production Server**: https://industrial-mcp-delta.vercel.app
 - **MCP Endpoint**: https://industrial-mcp-delta.vercel.app/api/mcp
+- **Health Check**: https://industrial-mcp-delta.vercel.app/api/health
 
 ## ✨ Features
 
